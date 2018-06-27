@@ -143,7 +143,7 @@ func (r *EmailRequest) SendEmail() (bool, error) {
 	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
 	subject := "Subject: " + r.subject + "\n"
 	addr := r.server
-	emailFrom := "cdh@halverson.org"
+	emailFrom := r.from
 
 	c, err1 := smtp.Dial(addr)
 	if err1 != nil {
