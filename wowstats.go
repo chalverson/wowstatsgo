@@ -1,28 +1,28 @@
 package main
 
 import (
-	_ "github.com/lib/pq"
-	"github.com/jessevdk/go-flags"
-	"log"
-	"os"
-	"time"
-	"fmt"
-	"gopkg.in/resty.v1"
-	"github.com/tidwall/gjson"
-	"bytes"
-	"encoding/json"
-	"compress/gzip"
-	"io/ioutil"
-	"database/sql"
 	"bufio"
-	"strings"
-	"text/tabwriter"
+	"bytes"
+	"compress/gzip"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"github.com/jessevdk/go-flags"
+	_ "github.com/lib/pq"
+	"github.com/spf13/viper"
+	"github.com/tidwall/gjson"
+	"gopkg.in/resty.v1"
+	"html/template"
+	"io/ioutil"
+	"log"
+	"net/smtp"
+	"os"
 	"os/user"
 	"path/filepath"
-	"net/smtp"
-	"html/template"
-	"github.com/spf13/viper"
+	"strings"
 	"sync"
+	"text/tabwriter"
+	"time"
 )
 
 /*
@@ -36,7 +36,6 @@ import (
 
 // Command line options
 var opts struct {
-	Config       bool `long:"config" description:"Run configuration"`
 	Add          bool `long:"add" description:"Add toon"`
 	Update       bool `long:"update" description:"Update Blizzard databases"`
 	Summary      bool `long:"summary" description:"Show level and ilevel for each toon"`
@@ -242,11 +241,11 @@ func main() {
 		panic(fmt.Errorf("Fatal error config file: %s \n", err))
 	}
 
-	if ! viper.IsSet("apiKey") {
+	if !viper.IsSet("apiKey") {
 		log.Fatalf("Must supply apiKey parameter in configuration file")
 	}
 
-	if ! viper.IsSet("dbUrl") {
+	if !viper.IsSet("dbUrl") {
 		log.Fatalf("Must supply dbUrl parameter in configuration file")
 	}
 
@@ -336,7 +335,7 @@ func GetAndInsertToonStats(t Toon, db *WowDB, config *Config, wg *sync.WaitGroup
 		log.Printf("Error inserting stats for %v: %v\n", t.Name, err)
 		return
 	} else {
-		if ! opts.Quiet {
+		if !opts.Quiet {
 			log.Printf("Inserted record for %v: Level: [%v] Ilevel: [%v]", t.Name, stats.Level, stats.ItemLevel)
 		}
 	}
@@ -437,7 +436,7 @@ func (db *WowDB) InsertToon(toon *Toon) {
 /*
 Update the player classes from Blizzard. This will use the API to get the classes and add them to the database. This
 probably isn't really needed, it's happened exactly twice ever, but you never know.
- */
+*/
 func UpdateClassesFromBlizzard(db *WowDB, config *Config) {
 	resp, err := resty.R().SetQueryParams(map[string]string{
 		"apikey": config.ApiKey,
