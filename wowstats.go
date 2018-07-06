@@ -178,6 +178,11 @@ func (r *EmailRequest) ParseTemplate(templateFileName string, data interface{}) 
 	return nil
 }
 
+func (s *Stats) LastModifiedAsDate() string {
+	t := time.Unix(s.LastModified/1000, 0)
+	return t.UTC().String()
+}
+
 func DoEmailSummary(db *WowDB, config Config) {
 	stats := db.GetAllToonLatestQuickSummary()
 
@@ -185,12 +190,12 @@ func DoEmailSummary(db *WowDB, config Config) {
 <table border="0" cellspacing="0" cellpadding="5">
         <caption>WoW Stats</caption>
     <thead>
-    <tr><th>Name</th><th>Level</th><th>Item Level</th><th>Date</th></tr>
+    <tr><th>Name</th><th>Level</th><th>Item Level</th><th>Last Modified</th><th>Last Recorded Date</th></tr>
     </thead>
     <tbody>
 {{range $idx, $b := .}}
 {{if zebra $idx}}<tr bgcolor="#C4C2C2">{{else}}<tr bgcolor="#DBDBDB">{{end}}
-<td>{{$b.Toon.Name}}</td><td>{{$b.Level}}</td><td>{{$b.ItemLevel}}</td><td>{{$b.CreateDate.Format "2006-01-02"}}</td></tr>
+<td>{{$b.Toon.Name}}</td><td>{{$b.Level}}</td><td>{{$b.ItemLevel}}</td><td>{{$b.LastModifiedAsDate}}</td><td>{{$b.CreateDate.Format "2006-01-02"}}</td></tr>
 {{end}}
 </tbody></table><p>
 `
@@ -554,14 +559,14 @@ func (db *WowDB) GetToonById(id int64) (*Toon, error) {
 }
 
 func (db *WowDB) GetAllToonLatestQuickSummary() []Stats {
-	rows, _ := db.Query("select t.id, s.level, s.item_level, s.create_date, t.name from stats s join toon t on s.toon_id = t.id and s.create_date::date = (select max(create_date::date) from stats) ORDER BY s.level, s.item_level DESC, t.name ASC")
+	rows, _ := db.Query("select t.id, s.level, s.item_level, s.create_date, t.name, s.last_modified from stats s join toon t on s.toon_id = t.id and s.create_date::date = (select max(create_date::date) from stats) ORDER BY s.level, s.item_level DESC, t.name ASC")
 	defer rows.Close()
 	var stats []Stats
 	for rows.Next() {
 		var id int64
 		var s Stats
 		var name string
-		rows.Scan(&id, &s.Level, &s.ItemLevel, &s.CreateDate, &name)
+		rows.Scan(&id, &s.Level, &s.ItemLevel, &s.CreateDate, &name, &s.LastModified)
 		s.Toon, _ = db.GetToonById(id)
 		stats = append(stats, s)
 	}
