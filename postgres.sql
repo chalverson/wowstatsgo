@@ -37,7 +37,7 @@ CREATE TABLE stats (
   id SERIAL PRIMARY KEY NOT NULL ,
   toon_id integer NOT NULL,
   last_modified bigint,
-  create_date timestamp without time zone DEFAULT now(),
+  create_date date DEFAULT now(),
   achievement_points integer,
   number_exalted integer,
   mounts_owned integer,
