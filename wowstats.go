@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/jessevdk/go-flags"
@@ -12,10 +11,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"gopkg.in/resty.v1"
-	"html/template"
 	"io/ioutil"
 	"log"
-	"net/smtp"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -23,6 +20,7 @@ import (
 	"sync"
 	"text/tabwriter"
 	"time"
+	"github.com/chalverson/wowstatsgo/models"
 )
 
 /*
@@ -43,175 +41,6 @@ var opts struct {
 	Quiet        bool `long:"quiet" description:"Do not print output"`
 }
 
-type WowDB struct {
-	*sql.DB
-}
-
-func NewPostgresDB(connStr string) *WowDB {
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		panic(err)
-	}
-	return &WowDB{db}
-}
-
-type Race struct {
-	Id   int64
-	Mask int64
-	Side string
-	Name string
-}
-
-type ToonClass struct {
-	Id        int64
-	Mask      int64
-	PowerType string
-	Name      string
-}
-
-// Structure to hold info for a WoW Toon
-type Toon struct {
-	Id     int64
-	Name   string
-	Race   int64
-	Class  int64
-	Gender int64
-	Realm  string
-	Region string
-}
-
-func NewToon(id int64, name string, race int64, class int64, gender int64, realm string, region string) *Toon {
-	return &Toon{
-		Id:     id,
-		Name:   name,
-		Race:   race,
-		Class:  class,
-		Gender: gender,
-		Realm:  realm,
-		Region: region,
-	}
-}
-
-type ToonDto struct {
-	Id     int64
-	Name   string
-	Race   *Race
-	Class  *ToonClass
-	Gender string
-	Realm  string
-	Region string
-}
-
-// Map the stats table
-type Stats struct {
-	Toon             *Toon
-	LastModified     int64
-	CreateDate       time.Time
-	Level            int64
-	AchievementPoint int64
-	ExaltedReps      int64
-	MountsCollected  int64
-	QuestsCompleted  int64
-	FishCaught       int64
-	PetsCollected    int64
-	PetBattlesWon    int64
-	PetBattlesPvpWon int64
-	ItemLevel        int64
-	HonorableKills   int64
-}
-
-type EmailRequest struct {
-	from    string
-	to      []string
-	subject string
-	body    string
-	server  string
-}
-
-func NewEmailRequest(to []string, from string, subject, server, body string) *EmailRequest {
-	return &EmailRequest{
-		to:      to,
-		from:    from,
-		subject: subject,
-		body:    body,
-		server:  server,
-	}
-}
-
-func (r *EmailRequest) SendEmail() (bool, error) {
-	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
-	subject := "Subject: " + r.subject + "\n"
-	addr := r.server
-	emailFrom := r.from
-
-	c, err1 := smtp.Dial(addr)
-	if err1 != nil {
-		log.Fatal(err1)
-	}
-	defer c.Close()
-	c.Mail(emailFrom)
-	for _, recipient := range r.to {
-		c.Rcpt(recipient)
-	}
-	wc, err := c.Data()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer wc.Close()
-	buf := bytes.NewBufferString(subject + mime + "\n" + r.body)
-	if _, err = buf.WriteTo(wc); err != nil {
-		log.Fatal(err)
-	}
-
-	return true, nil
-}
-
-func (r *EmailRequest) ParseTemplate(templateFileName string, data interface{}) error {
-	t := template.New("")
-	t.Funcs(template.FuncMap{"zebra": func(i int) bool { return i%2 == 0 }})
-	t.Parse(templateFileName)
-	buf := new(bytes.Buffer)
-	if err := t.Execute(buf, data); err != nil {
-		return err
-	}
-	r.body = buf.String()
-	return nil
-}
-
-func (s *Stats) LastModifiedAsDate() string {
-	t := time.Unix(s.LastModified/1000, 0)
-	return t.UTC().String()
-}
-
-func DoEmailSummary(db *WowDB, config Config) {
-	stats := db.GetAllToonLatestQuickSummary()
-
-	const tpl = `
-<table border="0" cellspacing="0" cellpadding="5">
-        <caption>WoW Stats</caption>
-    <thead>
-    <tr><th>Name</th><th>Level</th><th>Item Level</th><th>Last Modified</th><th>Last Recorded Date</th></tr>
-    </thead>
-    <tbody>
-{{range $idx, $b := .}}
-{{if zebra $idx}}<tr bgcolor="#C4C2C2">{{else}}<tr bgcolor="#DBDBDB">{{end}}
-<td>{{$b.Toon.Name}}</td><td>{{$b.Level}}</td><td>{{$b.ItemLevel}}</td><td>{{$b.LastModifiedAsDate}}</td><td>{{$b.CreateDate.Format "2006-01-02"}}</td></tr>
-{{end}}
-</tbody></table><p>
-`
-	r := NewEmailRequest(config.Email.ToAddress, config.Email.FromAddress, "WoW Stats", config.Email.Server, "")
-	err := r.ParseTemplate(tpl, stats)
-	if err != nil {
-		fmt.Println("Err in parsing template", err)
-		os.Exit(0)
-	}
-	_, err = r.SendEmail()
-	if err != nil {
-		fmt.Println("Mail failed", err)
-	}
-
-}
-
 type EmailConfig struct {
 	FromAddress string
 	ToAddress   []string
@@ -223,6 +52,11 @@ type Config struct {
 	ApiKey     string
 	ArchiveDir string
 	Email      EmailConfig
+}
+
+type Env struct {
+	db     models.Datastore
+	config Config
 }
 
 func main() {
@@ -260,35 +94,36 @@ func main() {
 		log.Fatalf("Unable to parse configuration: %v", err)
 	}
 
-	db := NewPostgresDB(config.DbUrl)
+	db, err := models.NewDB(config.DbUrl)
 	defer db.Close()
+	env := &Env{db: db, config: config}
 
 	if opts.Update {
 		log.Println("Updating info from Blizzard, please wait...")
-		UpdateClassesFromBlizzard(db, &config)
-		UpdateRacesFromBlizzard(db, &config)
+		UpdateClassesFromBlizzard(env)
+		UpdateRacesFromBlizzard(env)
 		log.Println("Done. Exiting.")
 		os.Exit(0)
 	}
 
 	if opts.Add {
-		AddToon(db, &config)
+		AddToon(env)
 		os.Exit(0)
 	}
 
 	if opts.Summary {
-		stats := db.GetAllToonLatestQuickSummary()
+		stats := env.db.GetAllToonLatestQuickSummary()
 		w := tabwriter.NewWriter(os.Stdout, 5, 0, 3, ' ', tabwriter.AlignRight)
-		fmt.Fprintln(w, "Name\tLevel\tItem Level\tDate\t")
+		fmt.Fprintln(w, "Name\tLevel\tItem Level\tLast Modified\tDate\t")
 		for _, s := range stats {
-			fmt.Fprintf(w, "%v\t%v\t%v\t%v\t\n", s.Toon.Name, s.Level, s.ItemLevel, s.CreateDate.Format("2006-01-02"))
+			fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", s.Toon.Name, s.Level, s.ItemLevel, s.LastModifiedAsDateTime(), s.CreateDate.Format("2006-01-02"))
 		}
 		w.Flush()
 		os.Exit(0)
 	}
 
 	if opts.EmailSummary {
-		DoEmailSummary(db, config)
+		DoEmailSummary(env)
 		os.Exit(0)
 	}
 
@@ -297,29 +132,30 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	toons := db.GetAllToons()
+	toons := env.db.GetAllToons()
 	for _, t := range toons {
 		wg.Add(1)
-		go GetAndInsertToonStats(t, db, &config, &wg)
+		go GetAndInsertToonStats(t, env, &wg)
 	}
 	wg.Wait()
 }
 
-func GetAndInsertToonStats(t Toon, db *WowDB, config *Config, wg *sync.WaitGroup) {
+// Gets the latest stats for the specified Toon and will then save to the database.
+func GetAndInsertToonStats(t models.Toon, env *Env, wg *sync.WaitGroup) {
 	defer wg.Done()
 	currentTime := time.Now().Local().Format("2006-01-02")
 
 	url := fmt.Sprintf("https://%s.api.battle.net/wow/character/%s/%s", t.Region, t.Realm, t.Name)
 	resp, err := resty.R().SetQueryParams(map[string]string{
 		"fields": "statistics,items,pets,mounts",
-		"apikey": config.ApiKey,
+		"apikey": env.config.ApiKey,
 	}).SetHeader("Accept", "application/json").Get(url)
 	if err != nil {
 		log.Println("Could not get things from Blizzard")
 	}
 
 	myJson := resp.String()
-	var stats = new(Stats)
+	var stats = new(models.Stats)
 	stats.Toon = &t
 	stats.Level = gjson.Get(myJson, "level").Int()
 	stats.AchievementPoint = gjson.Get(myJson, "achievementPoints").Int()
@@ -335,7 +171,7 @@ func GetAndInsertToonStats(t Toon, db *WowDB, config *Config, wg *sync.WaitGroup
 	stats.LastModified = gjson.Get(myJson, "lastModified").Int()
 	stats.CreateDate = time.Now().UTC()
 
-	err = db.InsertStats(stats)
+	err = env.db.InsertStats(stats)
 	if err != nil {
 		log.Printf("Error inserting stats for %v: %v\n", t.Name, err)
 		return
@@ -345,7 +181,7 @@ func GetAndInsertToonStats(t Toon, db *WowDB, config *Config, wg *sync.WaitGroup
 		}
 	}
 
-	dir := filepath.Join(config.ArchiveDir, fmt.Sprintf("%s-%s", t.Name, t.Realm))
+	dir := filepath.Join(env.config.ArchiveDir, fmt.Sprintf("%s-%s", t.Name, t.Realm))
 	os.MkdirAll(dir, 0755)
 
 	fileName := filepath.Join(dir, fmt.Sprintf("%s-%s-%s.json.gz", t.Name, t.Realm, currentTime))
@@ -361,21 +197,10 @@ func GetAndInsertToonStats(t Toon, db *WowDB, config *Config, wg *sync.WaitGroup
 	w.Close()
 
 	ioutil.WriteFile(fileName, gzipBuffer.Bytes(), 0644)
-
 }
 
-func (db *WowDB) InsertStats(stats *Stats) error {
-	_, err := db.Exec("INSERT INTO stats (toon_id, last_modified, create_date, level, achievement_points, number_exalted, mounts_owned, quests_completed, fish_caught, pets_owned, pet_battles_won, pet_battles_pvp_won, item_level, honorable_kills) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
-		stats.Toon.Id, stats.LastModified, stats.CreateDate, stats.Level, stats.AchievementPoint, stats.ExaltedReps, stats.MountsCollected, stats.QuestsCompleted,
-		stats.FishCaught, stats.PetsCollected, stats.PetBattlesWon, stats.PetBattlesPvpWon, stats.ItemLevel, stats.HonorableKills)
-
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func AddToon(db *WowDB, config *Config) {
+// Query the user for character to info to add to the database.
+func AddToon(env *Env) {
 	fmt.Printf("Character name: ")
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Scan()
@@ -389,7 +214,7 @@ func AddToon(db *WowDB, config *Config) {
 	fmt.Printf("Region: [%v]\n", region)
 
 	fmt.Println("Looking up character, please wait...")
-	apiKey := config.ApiKey
+	apiKey := env.config.ApiKey
 	url := fmt.Sprintf("https://%s.api.battle.net/wow/character/%s/%s", region, realm, name)
 
 	resp, err := resty.R().SetQueryParams(map[string]string{
@@ -412,10 +237,10 @@ func AddToon(db *WowDB, config *Config) {
 	toonRace := gjson.Get(body, "race").Int()
 	toonGender := gjson.Get(body, "gender").Int()
 
-	dbClass, err := db.GetClassById(toonClass)
-	dbRace, err := db.GetRaceById(toonRace)
+	dbClass, err := env.db.GetToonClassById(toonClass)
+	dbRace, err := env.db.GetRaceById(toonRace)
 
-	toon := NewToon(0, name, toonRace, toonClass, toonGender, realm, region)
+	toon := models.NewToon(0, name, toonRace, toonClass, toonGender, realm, region)
 
 	fmt.Println("Found character, please verify:")
 	fmt.Printf("  Name:  %v\n", name)
@@ -427,24 +252,15 @@ func AddToon(db *WowDB, config *Config) {
 	addResp := strings.ToLower(scanner.Text())
 	if addResp == "y" || addResp == "" {
 		fmt.Println("Adding character")
-		db.InsertToon(toon)
+		env.db.InsertToon(toon)
 	}
 }
 
-func (db *WowDB) InsertToon(toon *Toon) {
-	_, err := db.Exec("INSERT INTO toon (name, gender, class_id, race_id, realm, region) VALUES ($1, $2, $3, $4, $5, $6)", toon.Name, toon.Gender, toon.Class, toon.Race, toon.Realm, toon.Region)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
-/*
-Update the player classes from Blizzard. This will use the API to get the classes and add them to the database. This
-probably isn't really needed, it's happened exactly twice ever, but you never know.
-*/
-func UpdateClassesFromBlizzard(db *WowDB, config *Config) {
+// Update the player classes from Blizzard. This will use the API to get the classes and add them to the database. This
+//probably isn't really needed, it's happened exactly twice ever, but you never know.
+func UpdateClassesFromBlizzard(env *Env) {
 	resp, err := resty.R().SetQueryParams(map[string]string{
-		"apikey": config.ApiKey,
+		"apikey": env.config.ApiKey,
 	}).SetHeader("Accept", "application/json").Get("https://us.api.battle.net/wow/data/character/classes")
 	if err != nil {
 		log.Println("Could not get classes from Blizzard")
@@ -459,31 +275,26 @@ func UpdateClassesFromBlizzard(db *WowDB, config *Config) {
 		powerType := gjson.Get(r.String(), "powerType").String()
 		name := gjson.Get(r.String(), "name").String()
 
-		toonClass, err := db.GetClassById(id)
+		toonClass, err := env.db.GetToonClassById(id)
 		if err != nil {
 			log.Printf("Adding class: %v\n", name)
 			toonClass.Name = name
 			toonClass.Id = id
 			toonClass.PowerType = powerType
 			toonClass.Mask = mask
-			db.InsertClass(toonClass)
+			err = env.db.InsertToonClass(toonClass)
+			if err != nil {
+				log.Printf("Could not insert class %s: %v", name, err)
+			}
 		}
 	}
 }
 
-func (db *WowDB) InsertClass(toonClass *ToonClass) {
-	_, err := db.Exec("INSERT INTO classes (id, mask, powerType, name) VALUES ($1, $2, $3, $4)", toonClass.Id, toonClass.Mask, toonClass.PowerType, toonClass.Name)
-	if err != nil {
-		log.Fatal("Could not create statement to insert into classes: ", err)
-	}
-
-}
-
 // Update the database with the data from Blizzard. We force insert the ID here and use the same ID as
 // Blizzard so that we can map things correctly.
-func UpdateRacesFromBlizzard(db *WowDB, config *Config) {
+func UpdateRacesFromBlizzard(env *Env) {
 	resp, err := resty.R().SetQueryParams(map[string]string{
-		"apikey": config.ApiKey,
+		"apikey": env.config.ApiKey,
 	}).SetHeader("Accept", "application/json").Get("https://us.api.battle.net/wow/data/character/races")
 	if err != nil {
 		log.Println("Could not get races from Blizzard")
@@ -497,78 +308,13 @@ func UpdateRacesFromBlizzard(db *WowDB, config *Config) {
 		side := gjson.Get(r.String(), "side").String()
 		name := gjson.Get(r.String(), "name").String()
 
-		race, err := db.GetRaceById(id)
+		race, err := env.db.GetRaceById(id)
 		if err != nil {
 			race.Id = id
 			race.Name = name
 			race.Mask = mask
 			race.Side = side
-			db.InsertRace(race)
+			env.db.InsertRace(race)
 		}
 	}
-}
-
-func (db *WowDB) InsertRace(race *Race) {
-	_, err := db.Exec("INSERT INTO races (id, mask, side, name) VALUES ($1, $2, $3, $4)", race.Id, race.Mask, race.Side, race.Name)
-	if err != nil {
-		log.Fatal("Could not insert into races: ", err)
-	}
-
-}
-
-func (db *WowDB) GetAllToons() []Toon {
-	var toons []Toon
-	rows, _ := db.Query("SELECT id, name, race_id, class_id, gender, realm, region FROM toon")
-	defer rows.Close()
-
-	for rows.Next() {
-		var t Toon
-		rows.Scan(&t.Id, &t.Name, &t.Race, &t.Class, &t.Gender, &t.Realm, &t.Region)
-		toons = append(toons, t)
-	}
-	return toons
-}
-
-func (db *WowDB) GetClassById(id int64) (*ToonClass, error) {
-	var dbClass ToonClass
-	err := db.QueryRow("SELECT id, mask, powerType, name FROM classes WHERE id = $1", id).Scan(&dbClass.Id, &dbClass.Mask, &dbClass.PowerType, &dbClass.Name)
-	switch {
-	case err == sql.ErrNoRows:
-		return &ToonClass{}, err
-	}
-	return &dbClass, nil
-}
-
-func (db *WowDB) GetRaceById(id int64) (*Race, error) {
-	var dbRace Race
-	err := db.QueryRow("SELECT id, mask, side, name FROM races WHERE id = $1", id).Scan(&dbRace.Id, &dbRace.Mask, &dbRace.Side, &dbRace.Name)
-	switch {
-	case err == sql.ErrNoRows:
-		return &Race{}, err
-	}
-	return &dbRace, nil
-}
-
-func (db *WowDB) GetToonById(id int64) (*Toon, error) {
-	var toon Toon
-	err := db.QueryRow("SELECT id, name, race_id, class_id, gender, realm, region from toon where id = $1", id).Scan(&toon.Id, &toon.Name, &toon.Race, &toon.Class, &toon.Gender, &toon.Realm, &toon.Region)
-	if err != nil {
-		return &Toon{}, err
-	}
-	return &toon, nil
-}
-
-func (db *WowDB) GetAllToonLatestQuickSummary() []Stats {
-	rows, _ := db.Query("select t.id, s.level, s.item_level, s.create_date, t.name, s.last_modified from stats s join toon t on s.toon_id = t.id and s.create_date::date = (select max(create_date::date) from stats) ORDER BY s.level, s.item_level DESC, t.name ASC")
-	defer rows.Close()
-	var stats []Stats
-	for rows.Next() {
-		var id int64
-		var s Stats
-		var name string
-		rows.Scan(&id, &s.Level, &s.ItemLevel, &s.CreateDate, &name, &s.LastModified)
-		s.Toon, _ = db.GetToonById(id)
-		stats = append(stats, s)
-	}
-	return stats
 }
