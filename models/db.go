@@ -11,7 +11,7 @@ type Datastore interface {
 	GetAllToons() []Toon
 	InsertStats(stats *Stats) error
 	GetAllToonLatestQuickSummary() []Stats
-	InsertRace(race *Race)
+	InsertRace(race *Race) error
 	GetRaceById(id int64) (*Race, error)
 	InsertToonClass(toonClass *ToonClass) error
 	GetToonClassById(id int64) (*ToonClass, error)

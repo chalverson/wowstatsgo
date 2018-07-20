@@ -2,7 +2,6 @@ package models
 
 import (
 	"database/sql"
-	"log"
 )
 
 // Mapping of the Race table.
@@ -23,10 +22,10 @@ func (db *WowDB) GetRaceById(id int64) (*Race, error) {
 	return &dbRace, nil
 }
 
-func (db *WowDB) InsertRace(race *Race) {
+func (db *WowDB) InsertRace(race *Race) error {
 	_, err := db.Exec("INSERT INTO races (id, mask, side, name) VALUES ($1, $2, $3, $4)", race.Id, race.Mask, race.Side, race.Name)
 	if err != nil {
-		log.Fatal("Could not insert into races: ", err)
+		return err
 	}
-
+	return nil
 }

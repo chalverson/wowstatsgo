@@ -2,10 +2,7 @@ package main
 
 import (
 	"net/smtp"
-	"log"
 	"bytes"
-	"fmt"
-	"os"
 	"html/template"
 )
 
@@ -29,15 +26,15 @@ func NewEmailRequest(to []string, from string, subject, server, body string) *Em
 }
 
 // Send an email based on the EmailRequest.
-func (r *EmailRequest) SendEmail() (bool, error) {
+func (r *EmailRequest) SendEmail() error {
 	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
 	subject := "Subject: " + r.subject + "\n"
 	addr := r.server
 	emailFrom := r.from
 
-	c, err1 := smtp.Dial(addr)
-	if err1 != nil {
-		log.Fatal(err1)
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return err
 	}
 	defer c.Close()
 	c.Mail(emailFrom)
@@ -46,15 +43,15 @@ func (r *EmailRequest) SendEmail() (bool, error) {
 	}
 	wc, err := c.Data()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer wc.Close()
 	buf := bytes.NewBufferString(subject + mime + "\n" + r.body)
 	if _, err = buf.WriteTo(wc); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	return true, nil
+	return nil
 }
 
 // Parse and execute the html/template. There is a function called "zebra" that will handle the
@@ -74,7 +71,7 @@ func (r *EmailRequest) ParseTemplate(templateFileName string, data interface{}) 
 
 // Run the email summary. This will get the latest stats, then execute the template and finally send
 // the email.
-func DoEmailSummary(env *Env) {
+func DoEmailSummary(env *Env) error {
 	stats := env.db.GetAllToonLatestQuickSummary()
 
 	// The email template laying out the HTML email.
@@ -94,12 +91,12 @@ func DoEmailSummary(env *Env) {
 	r := NewEmailRequest(env.config.Email.ToAddress, env.config.Email.FromAddress, "WoW Stats", env.config.Email.Server, "")
 	err := r.ParseTemplate(tpl, stats)
 	if err != nil {
-		fmt.Println("Err in parsing template", err)
-		os.Exit(0)
-	}
-	_, err = r.SendEmail()
-	if err != nil {
-		fmt.Println("Mail failed", err)
+		return err
 	}
 
+	err = r.SendEmail()
+	if err != nil {
+		return err
+	}
+	return nil
 }

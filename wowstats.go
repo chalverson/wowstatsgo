@@ -9,8 +9,6 @@ import (
 	"github.com/jessevdk/go-flags"
 	_ "github.com/lib/pq"
 	"github.com/spf13/viper"
-	"github.com/tidwall/gjson"
-	"gopkg.in/resty.v1"
 	"io/ioutil"
 	"log"
 	"os"
@@ -97,17 +95,24 @@ func main() {
 	db, err := models.NewDB(config.DbUrl)
 	defer db.Close()
 	env := &Env{db: db, config: config}
+	blizzard := &BlizzardHttp{ApiKey: config.ApiKey}
 
 	if opts.Update {
 		log.Println("Updating info from Blizzard, please wait...")
-		UpdateClassesFromBlizzard(env)
-		UpdateRacesFromBlizzard(env)
+		err = UpdateClassesFromBlizzard(env, blizzard)
+		if err != nil {
+			log.Fatalf("Could not update classes from Blizzard: %v", err)
+		}
+		err = UpdateRacesFromBlizzard(env, blizzard)
+		if err != nil {
+			log.Fatalf("Could not update races from Blizzard: %v", err)
+		}
 		log.Println("Done. Exiting.")
 		os.Exit(0)
 	}
 
 	if opts.Add {
-		AddToon(env)
+		AddToon(env, blizzard)
 		os.Exit(0)
 	}
 
@@ -123,7 +128,10 @@ func main() {
 	}
 
 	if opts.EmailSummary {
-		DoEmailSummary(env)
+		err = DoEmailSummary(env)
+		if err != nil {
+			log.Printf("Error sending email: %v\n", err)
+		}
 		os.Exit(0)
 	}
 
@@ -135,43 +143,22 @@ func main() {
 	toons := env.db.GetAllToons()
 	for _, t := range toons {
 		wg.Add(1)
-		go GetAndInsertToonStats(t, env, &wg)
+		go GetAndInsertToonStats(t, env, blizzard, &wg)
 	}
 	wg.Wait()
 }
 
 // Gets the latest stats for the specified Toon and will then save to the database.
-func GetAndInsertToonStats(t models.Toon, env *Env, wg *sync.WaitGroup) {
+func GetAndInsertToonStats(t models.Toon, env *Env, blizzard Blizzard, wg *sync.WaitGroup) {
 	defer wg.Done()
-	currentTime := time.Now().Local().Format("2006-01-02")
 
-	url := fmt.Sprintf("https://%s.api.battle.net/wow/character/%s/%s", t.Region, t.Realm, t.Name)
-	resp, err := resty.R().SetQueryParams(map[string]string{
-		"fields": "statistics,items,pets,mounts",
-		"apikey": env.config.ApiKey,
-	}).SetHeader("Accept", "application/json").Get(url)
+	stats, myJson, err := blizzard.GetToonStats(t)
 	if err != nil {
-		log.Println("Could not get things from Blizzard")
+		log.Printf("Could not get stats for %s: %v\n", t.Name, err)
+		return
 	}
 
-	myJson := resp.String()
-	var stats = new(models.Stats)
-	stats.Toon = &t
-	stats.Level = gjson.Get(myJson, "level").Int()
-	stats.AchievementPoint = gjson.Get(myJson, "achievementPoints").Int()
-	stats.ExaltedReps = gjson.Get(myJson, "statistics.subCategories.#[id==130].subCategories.#[id==147].statistics.#[id=377].quantity").Int()
-	stats.MountsCollected = gjson.Get(myJson, "mounts.numCollected").Int()
-	stats.QuestsCompleted = gjson.Get(myJson, "statistics.subCategories.#[id==133].statistics.#[id=98].quantity").Int()
-	stats.FishCaught = gjson.Get(myJson, "statistics.subCategories.#[id==132].subCategories.#[id==178].statistics.#[id==1518].quantity").Int()
-	stats.PetsCollected = gjson.Get(myJson, "pets.numCollected").Int()
-	stats.PetBattlesWon = gjson.Get(myJson, "statistics.subCategories.#[id==15219].statistics.#[id==8278].quantity").Int()
-	stats.PetBattlesPvpWon = gjson.Get(myJson, "statistics.subCategories.#[id==15219].statistics.#[id==8286].quantity").Int()
-	stats.ItemLevel = gjson.Get(myJson, "items.averageItemLevel").Int()
-	stats.HonorableKills = gjson.Get(myJson, "totalHonorableKills").Int()
-	stats.LastModified = gjson.Get(myJson, "lastModified").Int()
-	stats.CreateDate = time.Now().UTC()
-
-	err = env.db.InsertStats(stats)
+	err = env.db.InsertStats(&stats)
 	if err != nil {
 		log.Printf("Error inserting stats for %v: %v\n", t.Name, err)
 		return
@@ -182,8 +169,14 @@ func GetAndInsertToonStats(t models.Toon, env *Env, wg *sync.WaitGroup) {
 	}
 
 	dir := filepath.Join(env.config.ArchiveDir, fmt.Sprintf("%s-%s", t.Name, t.Realm))
-	os.MkdirAll(dir, 0755)
+	err = os.MkdirAll(dir, 0755)
+	if err != nil {
+		log.Printf("Could not create directory %s: %v\n", dir, err)
+		// May as well return now since we can't write to the directory
+		return
+	}
 
+	currentTime := time.Now().Local().Format("2006-01-02")
 	fileName := filepath.Join(dir, fmt.Sprintf("%s-%s-%s.json.gz", t.Name, t.Realm, currentTime))
 
 	// This is just for myself in the off chance I ever want to look at it, pretty print the JSON
@@ -192,15 +185,21 @@ func GetAndInsertToonStats(t models.Toon, env *Env, wg *sync.WaitGroup) {
 
 	// Now we save it off as a gzip file
 	var gzipBuffer bytes.Buffer
-	var w = gzip.NewWriter(&gzipBuffer)
-	w.Write(pretty.Bytes())
-	w.Close()
+	var gzipWriter = gzip.NewWriter(&gzipBuffer)
+	_, err = gzipWriter.Write(pretty.Bytes())
+	if err != nil {
+		log.Printf("Could not write JSON to buffer: %v\n", err)
+	}
+	gzipWriter.Close()
 
-	ioutil.WriteFile(fileName, gzipBuffer.Bytes(), 0644)
+	err = ioutil.WriteFile(fileName, gzipBuffer.Bytes(), 0644)
+	if err != nil {
+		log.Printf("Could not write file %s: %v\n", fileName, err)
+	}
 }
 
 // Query the user for character to info to add to the database.
-func AddToon(env *Env) {
+func AddToon(env *Env, blizzard Blizzard) {
 	fmt.Printf("Character name: ")
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Scan()
@@ -214,33 +213,24 @@ func AddToon(env *Env) {
 	fmt.Printf("Region: [%v]\n", region)
 
 	fmt.Println("Looking up character, please wait...")
-	apiKey := env.config.ApiKey
-	url := fmt.Sprintf("https://%s.api.battle.net/wow/character/%s/%s", region, realm, name)
-
-	resp, err := resty.R().SetQueryParams(map[string]string{
-		"apikey": apiKey,
-	}).SetHeader("Accept", "application/json").Get(url)
-
+	toon := models.NewToon(0, name, 0, 0, 0, realm, region)
+	err := blizzard.GetToon(toon)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Could not find character: %v\n", err)
 		os.Exit(0)
 	}
 
-	if resp.StatusCode() != 200 {
-		fmt.Printf("Could not find character [%v]. Exiting.\n", name)
+	dbClass, err := env.db.GetToonClassById(toon.Class)
+	if err != nil {
+		fmt.Printf("Could not get class info from database: %v\n", err)
 		os.Exit(0)
 	}
 
-	body := resp.String()
-
-	toonClass := gjson.Get(body, "class").Int()
-	toonRace := gjson.Get(body, "race").Int()
-	toonGender := gjson.Get(body, "gender").Int()
-
-	dbClass, err := env.db.GetToonClassById(toonClass)
-	dbRace, err := env.db.GetRaceById(toonRace)
-
-	toon := models.NewToon(0, name, toonRace, toonClass, toonGender, realm, region)
+	dbRace, err := env.db.GetRaceById(toon.Race)
+	if err != nil {
+		fmt.Printf("Could not get race info from database: %v\n", err)
+		os.Exit(0)
+	}
 
 	fmt.Println("Found character, please verify:")
 	fmt.Printf("  Name:  %v\n", name)
@@ -252,69 +242,60 @@ func AddToon(env *Env) {
 	addResp := strings.ToLower(scanner.Text())
 	if addResp == "y" || addResp == "" {
 		fmt.Println("Adding character")
-		env.db.InsertToon(toon)
+		err = env.db.InsertToon(toon)
+		if err != nil {
+			fmt.Printf("Could not insert toon into database: %v\n", err)
+			os.Exit(0)
+		}
 	}
 }
 
 // Update the player classes from Blizzard. This will use the API to get the classes and add them to the database. This
 //probably isn't really needed, it's happened exactly twice ever, but you never know.
-func UpdateClassesFromBlizzard(env *Env) {
-	resp, err := resty.R().SetQueryParams(map[string]string{
-		"apikey": env.config.ApiKey,
-	}).SetHeader("Accept", "application/json").Get("https://us.api.battle.net/wow/data/character/classes")
+func UpdateClassesFromBlizzard(env *Env, blizzard Blizzard) error {
+	classes, err := blizzard.GetClasses()
 	if err != nil {
-		log.Println("Could not get classes from Blizzard")
+		return err
 	}
-	respJson := resp.String()
-	result := gjson.Get(respJson, "classes")
 
-	// There's probably a better way
-	for _, r := range result.Array() {
-		id := gjson.Get(r.String(), "id").Int()
-		mask := gjson.Get(r.String(), "mask").Int()
-		powerType := gjson.Get(r.String(), "powerType").String()
-		name := gjson.Get(r.String(), "name").String()
-
-		toonClass, err := env.db.GetToonClassById(id)
+	for _, c := range classes {
+		toonClass, err := env.db.GetToonClassById(c.Id)
 		if err != nil {
-			log.Printf("Adding class: %v\n", name)
-			toonClass.Name = name
-			toonClass.Id = id
-			toonClass.PowerType = powerType
-			toonClass.Mask = mask
+			log.Printf("Adding class: %v\n", c.Name)
+			toonClass.Name = c.Name
+			toonClass.Id = c.Id
+			toonClass.PowerType = c.PowerType
+			toonClass.Mask = c.Mask
 			err = env.db.InsertToonClass(toonClass)
 			if err != nil {
-				log.Printf("Could not insert class %s: %v", name, err)
+				log.Printf("Could not insert class %s: %v\n", c.Name, err)
 			}
 		}
 	}
+	return nil
 }
 
 // Update the database with the data from Blizzard. We force insert the ID here and use the same ID as
 // Blizzard so that we can map things correctly.
-func UpdateRacesFromBlizzard(env *Env) {
-	resp, err := resty.R().SetQueryParams(map[string]string{
-		"apikey": env.config.ApiKey,
-	}).SetHeader("Accept", "application/json").Get("https://us.api.battle.net/wow/data/character/races")
+func UpdateRacesFromBlizzard(env *Env, blizzard Blizzard) error {
+	races, err := blizzard.GetRaces()
+
 	if err != nil {
-		log.Println("Could not get races from Blizzard")
+		return err
 	}
-	respJson := resp.String()
-	result := gjson.Get(respJson, "races")
 
-	for _, r := range result.Array() {
-		id := gjson.Get(r.String(), "id").Int()
-		mask := gjson.Get(r.String(), "mask").Int()
-		side := gjson.Get(r.String(), "side").String()
-		name := gjson.Get(r.String(), "name").String()
-
-		race, err := env.db.GetRaceById(id)
+	for _, r := range races {
+		race, err := env.db.GetRaceById(r.Id)
 		if err != nil {
-			race.Id = id
-			race.Name = name
-			race.Mask = mask
-			race.Side = side
-			env.db.InsertRace(race)
+			race.Id = r.Id
+			race.Name = r.Name
+			race.Mask = r.Mask
+			race.Side = r.Side
+			err = env.db.InsertRace(race)
+			if err != nil {
+				log.Printf("Could not insert race %s: %v\n", r.Name, err)
+			}
 		}
 	}
+	return nil
 }
