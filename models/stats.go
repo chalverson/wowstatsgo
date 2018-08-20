@@ -36,7 +36,7 @@ func (db *WowDB) InsertStats(stats *Stats) error {
 // Get a list of the latest Stats for all toons. This will get just the latest day's stats which is useful
 // for email or CLI.
 func (db *WowDB) GetAllToonLatestQuickSummary() []Stats {
-	rows, _ := db.Query("select t.id, s.level, s.item_level, s.create_date, t.name, s.last_modified from stats s join toon t on s.toon_id = t.id and s.create_date::date = (select max(create_date::date) from stats) ORDER BY s.level, s.item_level DESC, t.name ASC")
+	rows, _ := db.Query("select t.id, s.level, s.item_level, s.create_date, t.name, s.last_modified from stats s join toon t on s.toon_id = t.id and s.create_date::date = (select max(create_date::date) from stats) ORDER BY s.level DESC, s.item_level DESC, t.name ASC")
 	defer rows.Close()
 	var stats []Stats
 	for rows.Next() {
