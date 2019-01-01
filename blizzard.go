@@ -1,12 +1,12 @@
 package main
 
 import (
-	"github.com/chalverson/wowstatsgo/models"
-	"gopkg.in/resty.v1"
-	"github.com/tidwall/gjson"
-	"time"
-	"fmt"
 	"errors"
+	"fmt"
+	"github.com/chalverson/wowstatsgo/models"
+	"github.com/tidwall/gjson"
+	"gopkg.in/resty.v1"
+	"time"
 )
 
 type Blizzard interface {
@@ -17,15 +17,26 @@ type Blizzard interface {
 }
 
 type BlizzardHttp struct {
-	ApiKey string
+	ClientId     string
+	ClientSecret string
+	AccessToken  string
+}
+
+func NewBlizzard(clientId string, clientSecret string) (*BlizzardHttp, error) {
+	url := fmt.Sprintf("https://us.battle.net/oauth/token")
+	resp, err := resty.R().SetBasicAuth(clientId, clientSecret).SetQueryParam("grant_type", "client_credentials").Get(url)
+	if err != nil {
+		return nil, err
+	}
+	body := resp.String()
+	blizzardHttp := &BlizzardHttp{ClientId: clientId, ClientSecret: clientSecret, AccessToken: gjson.Get(body, "access_token").String()}
+	return blizzardHttp, nil
 }
 
 func (blizzard *BlizzardHttp) GetToon(toon *models.Toon) error {
-	url := fmt.Sprintf("https://%s.api.battle.net/wow/character/%s/%s", toon.Region, toon.Realm, toon.Name)
+	url := fmt.Sprintf("https://%s.api.blizzard.com/wow/character/%s/%s", toon.Region, toon.Realm, toon.Name)
 
-	resp, err := resty.R().SetQueryParams(map[string]string{
-		"apikey": blizzard.ApiKey,
-	}).SetHeader("Accept", "application/json").Get(url)
+	resp, err := resty.R().SetAuthToken(blizzard.AccessToken).SetHeader("Accept", "application/json").Get(url)
 
 	if err != nil {
 		return err
@@ -46,9 +57,7 @@ func (blizzard *BlizzardHttp) GetToon(toon *models.Toon) error {
 }
 
 func (blizzard *BlizzardHttp) GetClasses() ([]models.ToonClass, error) {
-	resp, err := resty.R().SetQueryParams(map[string]string{
-		"apikey": blizzard.ApiKey,
-	}).SetHeader("Accept", "application/json").Get("https://us.api.battle.net/wow/data/character/classes")
+	resp, err := resty.R().SetAuthToken(blizzard.AccessToken).SetHeader("Accept", "application/json").Get("https://us.api.blizzard.com/wow/data/character/classes")
 	if err != nil {
 		return nil, err
 	}
@@ -72,11 +81,10 @@ func (blizzard *BlizzardHttp) GetClasses() ([]models.ToonClass, error) {
 }
 
 func (blizzard *BlizzardHttp) GetToonStats(toon models.Toon) (models.Stats, string, error) {
-	url := fmt.Sprintf("https://%s.api.battle.net/wow/character/%s/%s", toon.Region, toon.Realm, toon.Name)
+	url := fmt.Sprintf("https://%s.api.blizzard.com/wow/character/%s/%s", toon.Region, toon.Realm, toon.Name)
 	resp, err := resty.R().SetQueryParams(map[string]string{
 		"fields": "statistics,items,pets,mounts",
-		"apikey": blizzard.ApiKey,
-	}).SetHeader("Accept", "application/json").Get(url)
+	}).SetAuthToken(blizzard.AccessToken).SetHeader("Accept", "application/json").Get(url)
 	if err != nil {
 		return models.Stats{}, "", err
 	}
@@ -102,9 +110,7 @@ func (blizzard *BlizzardHttp) GetToonStats(toon models.Toon) (models.Stats, stri
 }
 
 func (blizzard *BlizzardHttp) GetRaces() ([]models.Race, error) {
-	resp, err := resty.R().SetQueryParams(map[string]string{
-		"apikey": blizzard.ApiKey,
-	}).SetHeader("Accept", "application/json").Get("https://us.api.battle.net/wow/data/character/races")
+	resp, err := resty.R().SetAuthToken(blizzard.AccessToken).SetHeader("Accept", "application/json").Get("https://us.api.blizzard.com/wow/data/character/races")
 	if err != nil {
 		return nil, err
 	}

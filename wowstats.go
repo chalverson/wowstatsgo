@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"github.com/chalverson/wowstatsgo/models"
 	"github.com/jessevdk/go-flags"
 	_ "github.com/lib/pq"
 	"github.com/spf13/viper"
@@ -18,7 +19,6 @@ import (
 	"sync"
 	"text/tabwriter"
 	"time"
-	"github.com/chalverson/wowstatsgo/models"
 )
 
 /*
@@ -46,10 +46,12 @@ type EmailConfig struct {
 }
 
 type Config struct {
-	DbUrl      string
-	ApiKey     string
-	ArchiveDir string
-	Email      EmailConfig
+	DbUrl        string
+	ApiKey       string
+	ArchiveDir   string
+	ClientId     string
+	ClientSecret string
+	Email        EmailConfig
 }
 
 type Env struct {
@@ -66,7 +68,7 @@ func main() {
 	usr, _ := user.Current()
 	homeDir := usr.HomeDir
 
-	os.MkdirAll(filepath.Join(homeDir, ".wowstats"), 0755)
+	err = os.MkdirAll(filepath.Join(homeDir, ".wowstats"), 0755)
 	viper.SetConfigName("wowstats")
 	viper.AddConfigPath("$HOME/.wowstats")
 	viper.AddConfigPath(filepath.Join(homeDir, ".wowstats"))
@@ -95,7 +97,11 @@ func main() {
 	db, err := models.NewDB(config.DbUrl)
 	defer db.Close()
 	env := &Env{db: db, config: config}
-	blizzard := &BlizzardHttp{ApiKey: config.ApiKey}
+	blizzard, err := NewBlizzard(config.ClientId, config.ClientSecret)
+
+	if err != nil {
+		log.Fatalf("Error in blizzard configuration: %v", err)
+	}
 
 	if opts.Update {
 		log.Println("Updating info from Blizzard, please wait...")
