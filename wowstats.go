@@ -80,8 +80,12 @@ func main() {
 		panic(fmt.Errorf("Fatal error config file: %s \n", err))
 	}
 
-	if !viper.IsSet("apiKey") {
-		log.Fatalf("Must supply apiKey parameter in configuration file")
+	if !viper.IsSet("clientId") {
+		log.Fatalf("Must supply clientId parameter in configuration file")
+	}
+
+	if !viper.IsSet("clientSecret") {
+		log.Fatalf("Must supply clientSecret parameter in configuration file")
 	}
 
 	if !viper.IsSet("dbUrl") {

@@ -28,8 +28,17 @@ func NewBlizzard(clientId string, clientSecret string) (*BlizzardHttp, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	body := resp.String()
-	blizzardHttp := &BlizzardHttp{ClientId: clientId, ClientSecret: clientSecret, AccessToken: gjson.Get(body, "access_token").String()}
+
+	if resp.StatusCode() != 200 {
+		errorDescription := gjson.Get(body, "error_description").String()
+		return nil, errors.New(fmt.Sprintf("Could not get auth token: %s", errorDescription))
+	}
+
+	accessToken := gjson.Get(body, "access_token").String()
+
+	blizzardHttp := &BlizzardHttp{ClientId: clientId, ClientSecret: clientSecret, AccessToken: accessToken}
 	return blizzardHttp, nil
 }
 
