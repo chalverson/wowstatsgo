@@ -212,7 +212,7 @@ func GetAndInsertToonStats(t models.Toon, env *Env, blizzard Blizzard, wg *sync.
 
 		// Now we save it off as a gzip file
 		var gzipBuffer bytes.Buffer
-		var gzipWriter= gzip.NewWriter(&gzipBuffer)
+		var gzipWriter = gzip.NewWriter(&gzipBuffer)
 		_, err = gzipWriter.Write(pretty.Bytes())
 		if err != nil {
 			log.Printf("Could not write JSON to buffer: %v\n", err)

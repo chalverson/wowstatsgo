@@ -14,7 +14,14 @@ type Race struct {
 
 func (db *WowDB) GetRaceById(id int64) (*Race, error) {
 	var dbRace Race
-	err := db.QueryRow("SELECT id, mask, side, name FROM races WHERE id = $1", id).Scan(&dbRace.Id, &dbRace.Mask, &dbRace.Side, &dbRace.Name)
+	var sqlString string
+	if db.dbDriver == "postgres" {
+		sqlString = "SELECT id, mask, side, name FROM races WHERE id = $1"
+	} else if db.dbDriver == "mysql" {
+		sqlString = "SELECT id, mask, side, name FROM races WHERE id = ?"
+	}
+
+	err := db.QueryRow(sqlString, id).Scan(&dbRace.Id, &dbRace.Mask, &dbRace.Side, &dbRace.Name)
 	switch {
 	case err == sql.ErrNoRows:
 		return &Race{}, err
@@ -23,7 +30,13 @@ func (db *WowDB) GetRaceById(id int64) (*Race, error) {
 }
 
 func (db *WowDB) InsertRace(race *Race) error {
-	_, err := db.Exec("INSERT INTO races (id, mask, side, name) VALUES ($1, $2, $3, $4)", race.Id, race.Mask, race.Side, race.Name)
+	var sqlString string
+	if db.dbDriver == "postgres" {
+		sqlString = "INSERT INTO races (id, mask, side, name) VALUES ($1, $2, $3, $4)"
+	} else if db.dbDriver == "mysql" {
+		sqlString = "INSERT INTO races (id, mask, side, name) VALUES (?, ?, ?, ?)"
+	}
+	_, err := db.Exec(sqlString, race.Id, race.Mask, race.Side, race.Name)
 	if err != nil {
 		return err
 	}

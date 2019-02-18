@@ -13,7 +13,14 @@ type ToonClass struct {
 }
 
 func (db *WowDB) InsertToonClass(toonClass *ToonClass) error {
-	_, err := db.Exec("INSERT INTO classes (id, mask, powerType, name) VALUES ($1, $2, $3, $4)", toonClass.Id, toonClass.Mask, toonClass.PowerType, toonClass.Name)
+	var sqlString string
+	if db.dbDriver == "postgres" {
+		sqlString = "INSERT INTO classes (id, mask, powerType, name) VALUES ($1, $2, $3, $4)"
+	} else if db.dbDriver == "mysql" {
+		sqlString = "INSERT INTO classes (id, mask, powerType, name) VALUES (?, ?, ?, ?)"
+	}
+
+	_, err := db.Exec(sqlString, toonClass.Id, toonClass.Mask, toonClass.PowerType, toonClass.Name)
 	if err != nil {
 		return err
 	}
@@ -22,7 +29,14 @@ func (db *WowDB) InsertToonClass(toonClass *ToonClass) error {
 
 func (db *WowDB) GetToonClassById(id int64) (*ToonClass, error) {
 	var dbClass ToonClass
-	err := db.QueryRow("SELECT id, mask, powerType, name FROM classes WHERE id = $1", id).Scan(&dbClass.Id, &dbClass.Mask, &dbClass.PowerType, &dbClass.Name)
+	var sqlString string
+	if db.dbDriver == "postgres" {
+		sqlString = "SELECT id, mask, powerType, name FROM classes WHERE id = $1"
+	} else if db.dbDriver == "mysql" {
+		sqlString = "SELECT id, mask, powerType, name FROM classes WHERE id = ?"
+	}
+
+	err := db.QueryRow(sqlString, id).Scan(&dbClass.Id, &dbClass.Mask, &dbClass.PowerType, &dbClass.Name)
 	switch {
 	case err == sql.ErrNoRows:
 		return &ToonClass{}, err
