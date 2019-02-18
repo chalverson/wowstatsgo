@@ -23,7 +23,7 @@ type BlizzardHttp struct {
 }
 
 func NewBlizzard(clientId string, clientSecret string) (*BlizzardHttp, error) {
-	url := fmt.Sprintf("https://us.battle.net/oauth/token")
+	url := "https://us.battle.net/oauth/token"
 	resp, err := resty.R().SetBasicAuth(clientId, clientSecret).SetQueryParam("grant_type", "client_credentials").Get(url)
 	if err != nil {
 		return nil, err

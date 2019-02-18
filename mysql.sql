@@ -1,56 +1,56 @@
 
 CREATE TABLE classes (
-  id integer PRIMARY KEY NOT NULL,
-  mask integer NOT NULL,
-  powertype text NOT NULL,
-  name text NOT NULL
+                       id INTEGER PRIMARY KEY NOT NULL,
+                       mask integer NOT NULL,
+                       powertype VARCHAR(255) NOT NULL,
+                       name VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE class_colors (
-  id SERIAL PRIMARY KEY,
-  class_id integer NOT NULL,
-  color text NOT NULL,
-  FOREIGN KEY (class_id) REFERENCES classes(id)
+                            id INTEGER PRIMARY KEY,
+                            class_id INTEGER NOT NULL,
+                            color VARCHAR(255) NOT NULL,
+                            FOREIGN KEY (class_id) REFERENCES classes(id)
 );
 
 CREATE TABLE races (
-  id integer PRIMARY KEY NOT NULL,
-  mask integer NOT NULL,
-  side text NOT NULL,
-  name text NOT NULL
+                     id integer PRIMARY KEY NOT NULL,
+                     mask integer NOT NULL,
+                     side VARCHAR(255) NOT NULL,
+                     name VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE toon (
-  id SERIAL PRIMARY KEY NOT NULL,
-  name text NOT NULL,
-  race_id integer NOT NULL,
-  class_id integer NOT NULL,
-  gender integer NOT NULL,
-  realm text NOT NULL,
-  region text NOT NULL,
-  UNIQUE (name, realm),
-  FOREIGN KEY (class_id) REFERENCES classes(id),
-  FOREIGN KEY (race_id) REFERENCES races(id)
+                    id integer AUTO_INCREMENT PRIMARY KEY NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    race_id integer NOT NULL,
+                    class_id integer NOT NULL,
+                    gender integer NOT NULL,
+                    realm VARCHAR(255) NOT NULL,
+                    region VARCHAR(255) NOT NULL,
+                    UNIQUE (name, realm),
+                    FOREIGN KEY (class_id) REFERENCES classes(id),
+                    FOREIGN KEY (race_id) REFERENCES races(id)
 );
 
 CREATE TABLE stats (
-  id SERIAL PRIMARY KEY NOT NULL ,
-  toon_id integer NOT NULL,
-  last_modified bigint,
-  create_date date DEFAULT now(),
-  achievement_points integer,
-  number_exalted integer,
-  mounts_owned integer,
-  quests_completed integer,
-  fish_caught integer,
-  pets_owned integer,
-  pet_battles_won integer,
-  pet_battles_pvp_won integer,
-  level integer,
-  item_level integer,
-  honorable_kills integer,
-  UNIQUE (create_date, toon_id),
-  FOREIGN KEY (toon_id) REFERENCES toon(id)
+                     id integer AUTO_INCREMENT PRIMARY KEY NOT NULL ,
+                     toon_id integer NOT NULL,
+                     last_modified bigint,
+                     create_date date DEFAULT now(),
+                     achievement_points integer,
+                     number_exalted integer,
+                     mounts_owned integer,
+                     quests_completed integer,
+                     fish_caught integer,
+                     pets_owned integer,
+                     pet_battles_won integer,
+                     pet_battles_pvp_won integer,
+                     level integer,
+                     item_level integer,
+                     honorable_kills integer,
+                     UNIQUE (create_date, toon_id),
+                     FOREIGN KEY (toon_id) REFERENCES toon(id)
 );
 
 

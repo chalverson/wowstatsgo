@@ -45,9 +45,10 @@ You will need a Blizzard API key from: https://dev.battle.net/
 
 #### Configuration file
 
-You will need to create a config file. By default it looks in `~/.wowstats` for a file called `wowstats.yml`.
-It should look similar to:
+You will need to create a config file. By default it looks in XDG standard `~/.config/wowstats` for a file 
+called `wowstats.yml`. It should look similar to:
 
+    dbDriver: postgres
     dbUrl: postgres://DBUSERNAME:DBPASSWORD@DBHOST/DBNAME?sslmode=disable
     apiKey: YOUR_API_KEY
     email:
@@ -58,11 +59,15 @@ It should look similar to:
       server: localhost:25
     archiveDir: $HOME/.wowstats/json
 
+* dbDriver - Database driver. Currently allowed values are `postgres` and `mysql`
+
 * dbUrl - Database URL to use to connect to the database
 
 * apiKey - Your Blizzard API key
 
-* archiveDir - Directory to store archived JSON files. Defaults to $HOME/.wowstats/json
+* archiveStats - `true` or `false` depending on if you want to save the json
+
+* archiveDir - Directory to store archived JSON files. This is optional and defaults to `$HOME/.local/share/wowstats/json`
 
 * email - Top level email settings
 

@@ -2,6 +2,7 @@ package models
 
 import (
 	_ "github.com/lib/pq"
+	_ "github.com/go-sql-driver/mysql"
 	"database/sql"
 )
 
@@ -21,8 +22,8 @@ type WowDB struct {
 	*sql.DB
 }
 
-func NewDB(connStr string) (*WowDB, error) {
-	db, err := sql.Open("postgres", connStr)
+func NewDB(dbDriver string, connStr string) (*WowDB, error) {
+	db, err := sql.Open(dbDriver, connStr)
 	if err != nil {
 		return nil, err
 	}

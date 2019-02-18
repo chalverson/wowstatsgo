@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"github.com/adrg/xdg"
 	"github.com/chalverson/wowstatsgo/models"
 	"github.com/jessevdk/go-flags"
 	_ "github.com/lib/pq"
@@ -13,7 +14,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -46,8 +46,10 @@ type EmailConfig struct {
 }
 
 type Config struct {
+	DbDriver     string
 	DbUrl        string
 	ApiKey       string
+	ArchiveStats bool
 	ArchiveDir   string
 	ClientId     string
 	ClientSecret string
@@ -65,15 +67,20 @@ func main() {
 		log.Panic(err)
 	}
 
-	usr, _ := user.Current()
-	homeDir := usr.HomeDir
+	_, err = xdg.ConfigFile("wowstats/wowstats.yml")
+	if err != nil {
+		log.Fatalf("Could not create config path")
+	}
 
-	err = os.MkdirAll(filepath.Join(homeDir, ".wowstats"), 0755)
 	viper.SetConfigName("wowstats")
-	viper.AddConfigPath("$HOME/.wowstats")
-	viper.AddConfigPath(filepath.Join(homeDir, ".wowstats"))
+	for _, c := range xdg.ConfigDirs {
+		viper.AddConfigPath(filepath.Join(c, "wowstats"))
+	}
+
+	//viper.AddConfigPath(filepath.Join(homeDir, ".wowstats"))
 	viper.AddConfigPath(".")
-	viper.SetDefault("archiveDir", filepath.Join(homeDir, ".wowstats", "json"))
+	viper.SetDefault("archiveDir", filepath.Join(xdg.DataHome, "wowstats", "json"))
+	viper.SetDefault("archiveStats", true)
 
 	err = viper.ReadInConfig()
 	if err != nil {
@@ -92,13 +99,21 @@ func main() {
 		log.Fatalf("Must supply dbUrl parameter in configuration file")
 	}
 
+	if !viper.IsSet("dbDriver") {
+		log.Fatalf("Must supply dbVendor parameter in configuration file")
+	}
+
 	var config Config
 	err = viper.Unmarshal(&config)
 	if err != nil {
 		log.Fatalf("Unable to parse configuration: %v", err)
 	}
 
-	db, err := models.NewDB(config.DbUrl)
+	if !((config.DbDriver == "postgres") || (config.DbDriver == "mysql")) {
+		log.Fatalf("Allowed database driver values are postgres or mysql")
+	}
+
+	db, err := models.NewDB(config.DbDriver, config.DbUrl)
 	defer db.Close()
 	env := &Env{db: db, config: config}
 	blizzard, err := NewBlizzard(config.ClientId, config.ClientSecret)
@@ -129,11 +144,11 @@ func main() {
 	if opts.Summary {
 		stats := env.db.GetAllToonLatestQuickSummary()
 		w := tabwriter.NewWriter(os.Stdout, 5, 0, 3, ' ', tabwriter.AlignRight)
-		fmt.Fprintln(w, "Name\tLevel\tItem Level\tLast Modified\tDate\t")
+		_, _ = fmt.Fprintln(w, "Name\tLevel\tItem Level\tLast Modified\tDate\t")
 		for _, s := range stats {
-			fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", s.Toon.Name, s.Level, s.ItemLevel, s.LastModifiedAsDateTime(), s.CreateDate.Format("2006-01-02"))
+			_, _ = fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", s.Toon.Name, s.Level, s.ItemLevel, s.LastModifiedAsDateTime(), s.CreateDate.Format("2006-01-02"))
 		}
-		w.Flush()
+		_ = w.Flush()
 		os.Exit(0)
 	}
 
@@ -178,33 +193,39 @@ func GetAndInsertToonStats(t models.Toon, env *Env, blizzard Blizzard, wg *sync.
 		}
 	}
 
-	dir := filepath.Join(env.config.ArchiveDir, fmt.Sprintf("%s-%s", t.Name, t.Realm))
-	err = os.MkdirAll(dir, 0755)
-	if err != nil {
-		log.Printf("Could not create directory %s: %v\n", dir, err)
-		// May as well return now since we can't write to the directory
-		return
-	}
+	if env.config.ArchiveStats {
 
-	currentTime := time.Now().Local().Format("2006-01-02")
-	fileName := filepath.Join(dir, fmt.Sprintf("%s-%s-%s.json.gz", t.Name, t.Realm, currentTime))
+		dir := filepath.Join(env.config.ArchiveDir, fmt.Sprintf("%s-%s", t.Name, t.Realm))
+		err = os.MkdirAll(dir, 0755)
+		if err != nil {
+			log.Printf("Could not create directory %s: %v\n", dir, err)
+			// May as well return now since we can't write to the directory
+			return
+		}
 
-	// This is just for myself in the off chance I ever want to look at it, pretty print the JSON
-	var pretty bytes.Buffer
-	json.Indent(&pretty, []byte(myJson), "", "  ")
+		currentTime := time.Now().Local().Format("2006-01-02")
+		fileName := filepath.Join(dir, fmt.Sprintf("%s-%s-%s.json.gz", t.Name, t.Realm, currentTime))
 
-	// Now we save it off as a gzip file
-	var gzipBuffer bytes.Buffer
-	var gzipWriter = gzip.NewWriter(&gzipBuffer)
-	_, err = gzipWriter.Write(pretty.Bytes())
-	if err != nil {
-		log.Printf("Could not write JSON to buffer: %v\n", err)
-	}
-	gzipWriter.Close()
+		// This is just for myself in the off chance I ever want to look at it, pretty print the JSON
+		var pretty bytes.Buffer
+		_ = json.Indent(&pretty, []byte(myJson), "", "  ")
 
-	err = ioutil.WriteFile(fileName, gzipBuffer.Bytes(), 0644)
-	if err != nil {
-		log.Printf("Could not write file %s: %v\n", fileName, err)
+		// Now we save it off as a gzip file
+		var gzipBuffer bytes.Buffer
+		var gzipWriter= gzip.NewWriter(&gzipBuffer)
+		_, err = gzipWriter.Write(pretty.Bytes())
+		if err != nil {
+			log.Printf("Could not write JSON to buffer: %v\n", err)
+		}
+		err = gzipWriter.Close()
+		if err != nil {
+			log.Printf("Could not close gzip writer: %v\n", err)
+		}
+
+		err = ioutil.WriteFile(fileName, gzipBuffer.Bytes(), 0644)
+		if err != nil {
+			log.Printf("Could not write file %s: %v\n", fileName, err)
+		}
 	}
 }
 
