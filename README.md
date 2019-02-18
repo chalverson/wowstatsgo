@@ -17,14 +17,33 @@ so length of code is not a good comparison.
 
 ### Requirements
 
+#### Go Packages
+
+    go get -u github.com/adrg/xdg
+    go get -u github.com/go-sql-driver/mysql
+    go get -u github.com/lib/pq
+    go get -u github.com/spf13/viper
+    go get -u github.com/tidwall/gjson
+    go get -u gopkg.in/go-resty/resty.v1
+    go get -u github.com/jessevdk/go-flags
+
 #### Database
 
-Requires a Postgres database. For example:
+Requires either a Postgres or MariaDB database.
 
-    createuser -W wowstats
-    createdb -O wowstats wowstats
-    psql -U wowstats wowstats < postgres.sql
+For Postgres:
+
+    % createuser -W wowstats
+    % createdb -O wowstats wowstats
+    % psql -U wowstats wowstats < postgres.sql
     
+For MariaDB (MySQL), get into MySQL as admin:
+
+    mysql> create database wowstats;
+    mysql> grant all privielges on wowstats.* to 'DBUSER'@'%' identified by 'DBPASSWORD'
+    mysql> \q
+    % mysql -h DBHOST -u DBUSER -p wowstats < mysql.sql
+   
 The SQL will prepopulate some values from Blizzard so you do some queries and get
 class and race information. These are hardcoded to use the `id` from Blizzard so that 
 you can use the information that the API returns to figure things out. It also populates
@@ -45,8 +64,9 @@ You will need a Blizzard API key from: https://dev.battle.net/
 
 #### Configuration file
 
-You will need to create a config file. By default it looks in XDG standard `~/.config/wowstats` for a file 
-called `wowstats.yml`. It should look similar to:
+You will need to create a config file. By default it looks in XDG standard `~/.config/wowstats/wowstats.yml`. 
+
+It should look similar to:
 
     dbDriver: postgres
     dbUrl: postgres://DBUSERNAME:DBPASSWORD@DBHOST/DBNAME?sslmode=disable
@@ -57,7 +77,13 @@ called `wowstats.yml`. It should look similar to:
         - email2@test.com
       fromAddress: your@email.address
       server: localhost:25
-    archiveDir: $HOME/.wowstats/json
+    archiveDir: /home/username/.config/wowstats/json
+
+For MySQL, you'll probably want something like:
+
+    dbDriver: mysql
+    dbUrl: DBUSERNAME:DBPASSWORD@tcp(DBHOST)/DBNAME?parseTime=true
+    
 
 * dbDriver - Database driver. Currently allowed values are `postgres` and `mysql`
 
