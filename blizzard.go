@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/chalverson/wowstatsgo/models"
 	"github.com/tidwall/gjson"
-	"gopkg.in/resty.v1"
+	"gopkg.in/go-resty/resty.v1"
 	"time"
 )
 
