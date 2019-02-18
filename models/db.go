@@ -1,9 +1,9 @@
 package models
 
 import (
-	_ "github.com/lib/pq"
-	_ "github.com/go-sql-driver/mysql"
 	"database/sql"
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 )
 
 type Datastore interface {
@@ -20,6 +20,7 @@ type Datastore interface {
 
 type WowDB struct {
 	*sql.DB
+	dbDriver string
 }
 
 func NewDB(dbDriver string, connStr string) (*WowDB, error) {
@@ -31,5 +32,5 @@ func NewDB(dbDriver string, connStr string) (*WowDB, error) {
 	if err = db.Ping(); err != nil {
 		return nil, err
 	}
-	return &WowDB{db}, nil
+	return &WowDB{db, dbDriver}, nil
 }

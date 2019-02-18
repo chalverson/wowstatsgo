@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"log"
+	"time"
+)
 
 // Map the stats table. This holds the "interesting" stats that I'm interested in.
 type Stats struct {
@@ -23,27 +26,46 @@ type Stats struct {
 // Insert a stats record. This doesn't check to see if a duplicate exists, it relies on the database's
 // constraints to handle that.
 func (db *WowDB) InsertStats(stats *Stats) error {
-	_, err := db.Exec("INSERT INTO stats (toon_id, last_modified, create_date, level, achievement_points, number_exalted, mounts_owned, quests_completed, fish_caught, pets_owned, pet_battles_won, pet_battles_pvp_won, item_level, honorable_kills) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+	var sqlString string
+	if db.dbDriver == "postgres" {
+		sqlString = "INSERT INTO stats (toon_id, last_modified, create_date, level, achievement_points, number_exalted, mounts_owned, quests_completed, fish_caught, pets_owned, pet_battles_won, pet_battles_pvp_won, item_level, honorable_kills) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"
+	} else if db.dbDriver == "mysql" {
+		sqlString = "INSERT INTO stats (toon_id, last_modified, create_date, level, achievement_points, number_exalted, mounts_owned, quests_completed, fish_caught, pets_owned, pet_battles_won, pet_battles_pvp_won, item_level, honorable_kills) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+	}
+	_, err := db.Exec(sqlString,
 		stats.Toon.Id, stats.LastModified, stats.CreateDate, stats.Level, stats.AchievementPoint, stats.ExaltedReps, stats.MountsCollected, stats.QuestsCompleted,
 		stats.FishCaught, stats.PetsCollected, stats.PetBattlesWon, stats.PetBattlesPvpWon, stats.ItemLevel, stats.HonorableKills)
 
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
 // Get a list of the latest Stats for all toons. This will get just the latest day's stats which is useful
 // for email or CLI.
 func (db *WowDB) GetAllToonLatestQuickSummary() []Stats {
-	rows, _ := db.Query("select t.id, s.level, s.item_level, s.create_date, t.name, s.last_modified from stats s join toon t on s.toon_id = t.id and s.create_date::date = (select max(create_date::date) from stats) ORDER BY s.level DESC, s.item_level DESC, t.name ASC")
+	var sqlString string
+
+	if db.dbDriver == "postgres" {
+		sqlString = "select t.id, s.level, s.item_level, s.create_date, t.name, s.last_modified from stats s join toon t on s.toon_id = t.id and s.create_date::date = (select max(create_date::date) from stats) ORDER BY s.level DESC, s.item_level DESC, t.name ASC"
+	} else if db.dbDriver == "mysql" {
+		sqlString = "select t.id, s.level, s.item_level, s.create_date, t.name, s.last_modified from stats s join toon t on s.toon_id = t.id and s.create_date = (select max(create_date) from stats) ORDER BY s.level DESC, s.item_level DESC, t.name ASC"
+	}
+
+	rows, _ := db.Query(sqlString)
 	defer rows.Close()
 	var stats []Stats
 	for rows.Next() {
 		var id int64
 		var s Stats
 		var name string
-		rows.Scan(&id, &s.Level, &s.ItemLevel, &s.CreateDate, &name, &s.LastModified)
+		err := rows.Scan(&id, &s.Level, &s.ItemLevel, &s.CreateDate, &name, &s.LastModified)
+		if err != nil {
+			log.Printf("Error reading row: %v", err)
+		}
 		s.Toon, _ = db.GetToonById(id)
 		stats = append(stats, s)
 	}

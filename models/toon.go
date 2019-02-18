@@ -27,7 +27,13 @@ func NewToon(id int64, name string, race int64, class int64, gender int64, realm
 // Get a Toon from the database based on Id
 func (db *WowDB) GetToonById(id int64) (*Toon, error) {
 	var toon Toon
-	err := db.QueryRow("SELECT id, name, race_id, class_id, gender, realm, region from toon where id = $1", id).Scan(&toon.Id, &toon.Name, &toon.Race, &toon.Class, &toon.Gender, &toon.Realm, &toon.Region)
+	var sqlString string
+	if db.dbDriver == "postgres" {
+		sqlString = "SELECT id, name, race_id, class_id, gender, realm, region from toon where id = $1"
+	} else if db.dbDriver == "mysql" {
+		sqlString = "SELECT id, name, race_id, class_id, gender, realm, region from toon where id = ?"
+	}
+	err := db.QueryRow(sqlString, id).Scan(&toon.Id, &toon.Name, &toon.Race, &toon.Class, &toon.Gender, &toon.Realm, &toon.Region)
 	if err != nil {
 		return &Toon{}, err
 	}
@@ -42,7 +48,7 @@ func (db *WowDB) GetAllToons() []Toon {
 
 	for rows.Next() {
 		var t Toon
-		rows.Scan(&t.Id, &t.Name, &t.Race, &t.Class, &t.Gender, &t.Realm, &t.Region)
+		_ = rows.Scan(&t.Id, &t.Name, &t.Race, &t.Class, &t.Gender, &t.Realm, &t.Region)
 		toons = append(toons, t)
 	}
 	return toons
@@ -50,7 +56,14 @@ func (db *WowDB) GetAllToons() []Toon {
 
 // Insert a new Toon into the database. Does not need an ID as the database should handle entering it.
 func (db *WowDB) InsertToon(toon *Toon) error {
-	_, err := db.Exec("INSERT INTO toon (name, gender, class_id, race_id, realm, region) VALUES ($1, $2, $3, $4, $5, $6)", toon.Name, toon.Gender, toon.Class, toon.Race, toon.Realm, toon.Region)
+	var sqlString string
+	if db.dbDriver == "postgres" {
+		sqlString = "INSERT INTO toon (name, gender, class_id, race_id, realm, region) VALUES ($1, $2, $3, $4, $5, $6)"
+	} else if db.dbDriver == "mysql" {
+		sqlString = "INSERT INTO toon (name, gender, class_id, race_id, realm, region) VALUES (?, ?, ?, ?, ?, ?)"
+	}
+
+	_, err := db.Exec(sqlString, toon.Name, toon.Gender, toon.Class, toon.Race, toon.Realm, toon.Region)
 	if err != nil {
 		return err
 	}
