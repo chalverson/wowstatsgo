@@ -19,9 +19,8 @@ so length of code is not a good comparison.
 
 #### Go Packages
 
+    go get -u github.com/jinzhu/gorm
     go get -u github.com/adrg/xdg
-    go get -u github.com/go-sql-driver/mysql
-    go get -u github.com/lib/pq
     go get -u github.com/spf13/viper
     go get -u github.com/tidwall/gjson
     go get -u gopkg.in/go-resty/resty.v1
@@ -35,14 +34,12 @@ For Postgres:
 
     % createuser -W wowstats
     % createdb -O wowstats wowstats
-    % psql -U wowstats wowstats < postgres.sql
     
 For MariaDB (MySQL), get into MySQL as admin:
 
     mysql> create database wowstats;
     mysql> grant all privielges on wowstats.* to 'DBUSER'@'%' identified by 'DBPASSWORD'
     mysql> \q
-    % mysql -h DBHOST -u DBUSER -p wowstats < mysql.sql
    
 The SQL will prepopulate some values from Blizzard so you do some queries and get
 class and race information. These are hardcoded to use the `id` from Blizzard so that 

@@ -1,17 +1,17 @@
 package models
 
 import (
-	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/lib/pq"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/mysql"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
 )
 
 type Datastore interface {
 	InsertToon(toon *Toon) error
 	GetToonById(id int64) (*Toon, error)
 	GetAllToons() []Toon
-	InsertStats(stats *Stats) error
-	GetAllToonLatestQuickSummary() []Stats
+	InsertStats(stats *Stat) error
+	GetAllToonLatestQuickSummary() []Stat
 	InsertRace(race *Race) error
 	GetRaceById(id int64) (*Race, error)
 	InsertToonClass(toonClass *ToonClass) error
@@ -19,18 +19,22 @@ type Datastore interface {
 }
 
 type WowDB struct {
-	*sql.DB
+	*gorm.DB
 	dbDriver string
 }
 
 func NewDB(dbDriver string, connStr string) (*WowDB, error) {
-	db, err := sql.Open(dbDriver, connStr)
+	db, err := gorm.Open(dbDriver, connStr)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = db.Ping(); err != nil {
+	err = db.DB().Ping()
+	if err != nil {
 		return nil, err
 	}
+
+	db.Set("gorm:auto_preload", true)
+	//db.LogMode(true)
 	return &WowDB{db, dbDriver}, nil
 }

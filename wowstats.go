@@ -115,12 +115,15 @@ func main() {
 
 	db, err := models.NewDB(config.DbDriver, config.DbUrl)
 	defer db.Close()
+
 	env := &Env{db: db, config: config}
 	blizzard, err := NewBlizzard(config.ClientId, config.ClientSecret)
 
 	if err != nil {
 		log.Fatalf("Error in blizzard configuration: %v", err)
 	}
+
+	doDatabaseMigrations(db, env, blizzard)
 
 	if opts.Update {
 		log.Println("Updating info from Blizzard, please wait...")
@@ -146,7 +149,7 @@ func main() {
 		w := tabwriter.NewWriter(os.Stdout, 5, 0, 3, ' ', tabwriter.AlignRight)
 		_, _ = fmt.Fprintln(w, "Name\tLevel\tItem Level\tLast Modified\tDate\t")
 		for _, s := range stats {
-			_, _ = fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", s.Toon.Name, s.Level, s.ItemLevel, s.LastModifiedAsDateTime(), s.CreateDate.Format("2006-01-02"))
+			_, _ = fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", s.Toon.Name, s.Level, s.ItemLevel, s.LastModifiedAsDateTime(), s.CreatedAt.Format("2006-01-02"))
 		}
 		_ = w.Flush()
 		os.Exit(0)
@@ -171,6 +174,87 @@ func main() {
 		go GetAndInsertToonStats(t, env, blizzard, &wg)
 	}
 	wg.Wait()
+}
+
+// Do database migrations.
+// Add additional changes after the AutoMigrate for things that AutoMigrate won't handle.
+func doDatabaseMigrations(db *models.WowDB, env *Env, blizzard Blizzard) {
+
+	if ! db.HasTable(&models.Race{}) {
+		log.Println("Migrating race")
+		db.AutoMigrate(&models.Race{})
+		err := UpdateRacesFromBlizzard(env, blizzard)
+		if err != nil {
+			log.Printf("Could not update races: %v\n", err)
+		}
+	}
+
+	if ! db.HasTable(&models.ToonClass{}) {
+		log.Println("Migrating classes")
+		db.AutoMigrate(&models.ToonClass{})
+		err := UpdateClassesFromBlizzard(env, blizzard)
+		if err != nil {
+			log.Printf("Could not update races: %v\n", err)
+		}
+	}
+
+	db.AutoMigrate(&models.Stat{})
+	db.AutoMigrate(&models.Toon{})
+
+	if ! db.HasTable(&models.ClassColor{}) {
+		db.AutoMigrate(&models.ClassColor{})
+		db.Model(&models.ClassColor{}).AddForeignKey("toon_class_id", "toon_classes(id)", "RESTRICT", "RESTRICT")
+		var tColor = models.ClassColor{ToonClassID: 1, Color: "#C79C63"}
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 2
+		tColor.Color = "#F58CBA"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 3
+		tColor.Color = "#ABD473"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 4
+		tColor.Color = "#FFF569"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 5
+		tColor.Color = "#F0EBE0"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 6
+		tColor.Color = "#C41F3B"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 7
+		tColor.Color = "#0070DE"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 8
+		tColor.Color = "#69CCF0"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 9
+		tColor.Color = "#9482C9"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 10
+		tColor.Color = "#00FF96"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 11
+		tColor.Color = "#FF7D0A"
+		db.Create(&tColor)
+		tColor.ID = 0
+		tColor.ToonClassID = 12
+		tColor.Color = "#A330C9"
+		db.Create(&tColor)
+	}
+
+	db.Model(&models.Toon{}).AddForeignKey("race_id", "races(id)", "RESTRICT", "RESTRICT")
+	db.Model(&models.Toon{}).AddForeignKey("class_id", "toon_classes(id)", "RESTRICT", "RESTRICT")
+	db.Model(&models.Stat{}).AddForeignKey("toon_id", "toons(id)", "RESTRICT", "RESTRICT")
 }
 
 // Gets the latest stats for the specified Toon and will then save to the database.
@@ -244,20 +328,20 @@ func AddToon(env *Env, blizzard Blizzard) {
 	fmt.Printf("Region: [%v]\n", region)
 
 	fmt.Println("Looking up character, please wait...")
-	toon := models.NewToon(0, name, 0, 0, 0, realm, region)
+	toon := models.NewToon(name, 0, 0, 0, realm, region)
 	err := blizzard.GetToon(toon)
 	if err != nil {
 		fmt.Printf("Could not find character: %v\n", err)
 		os.Exit(0)
 	}
 
-	dbClass, err := env.db.GetToonClassById(toon.Class)
+	dbClass, err := env.db.GetToonClassById(toon.ClassID)
 	if err != nil {
 		fmt.Printf("Could not get class info from database: %v\n", err)
 		os.Exit(0)
 	}
 
-	dbRace, err := env.db.GetRaceById(toon.Race)
+	dbRace, err := env.db.GetRaceById(toon.RaceID)
 	if err != nil {
 		fmt.Printf("Could not get race info from database: %v\n", err)
 		os.Exit(0)
@@ -273,7 +357,15 @@ func AddToon(env *Env, blizzard Blizzard) {
 	addResp := strings.ToLower(scanner.Text())
 	if addResp == "y" || addResp == "" {
 		fmt.Println("Adding character")
-		err = env.db.InsertToon(toon)
+		var dbToon models.Toon
+		dbToon.ToonClass = *dbClass
+		dbToon.Race = *dbRace
+		dbToon.Name = name
+		dbToon.Gender = toon.Gender
+		dbToon.Realm = toon.Realm
+		dbToon.Region = toon.Region
+
+		err = env.db.InsertToon(&dbToon)
 		if err != nil {
 			fmt.Printf("Could not insert toon into database: %v\n", err)
 			os.Exit(0)
@@ -284,17 +376,20 @@ func AddToon(env *Env, blizzard Blizzard) {
 // Update the player classes from Blizzard. This will use the API to get the classes and add them to the database. This
 //probably isn't really needed, it's happened exactly twice ever, but you never know.
 func UpdateClassesFromBlizzard(env *Env, blizzard Blizzard) error {
+	//log.Println("Entering UpdateClassesFromBlizzard")
+
 	classes, err := blizzard.GetClasses()
 	if err != nil {
 		return err
 	}
 
 	for _, c := range classes {
-		toonClass, err := env.db.GetToonClassById(c.Id)
+		toonClass, err := env.db.GetToonClassById(c.ID)
+		//log.Printf("Back from get by id, err: %v\n", err)
 		if err != nil {
-			log.Printf("Adding class: %v\n", c.Name)
+			//log.Printf("Adding class: %v\n", c.Name)
 			toonClass.Name = c.Name
-			toonClass.Id = c.Id
+			toonClass.ID = c.ID
 			toonClass.PowerType = c.PowerType
 			toonClass.Mask = c.Mask
 			err = env.db.InsertToonClass(toonClass)
@@ -303,12 +398,14 @@ func UpdateClassesFromBlizzard(env *Env, blizzard Blizzard) error {
 			}
 		}
 	}
+	//log.Println("Exiting UpdateClassesFromBlizzard")
 	return nil
 }
 
 // Update the database with the data from Blizzard. We force insert the ID here and use the same ID as
 // Blizzard so that we can map things correctly.
 func UpdateRacesFromBlizzard(env *Env, blizzard Blizzard) error {
+	//log.Println("Entering UpdateRacesFromBlizzard")
 	races, err := blizzard.GetRaces()
 
 	if err != nil {
@@ -316,9 +413,12 @@ func UpdateRacesFromBlizzard(env *Env, blizzard Blizzard) error {
 	}
 
 	for _, r := range races {
-		race, err := env.db.GetRaceById(r.Id)
+		//log.Printf("Searching for race id: %v\n", r.ID)
+		race, err := env.db.GetRaceById(r.ID)
+		//log.Printf("Back from get by id, err: %v\n", err)
 		if err != nil {
-			race.Id = r.Id
+			//log.Printf("Inserting race: [%v]\n", r.Name)
+			race.ID = r.ID
 			race.Name = r.Name
 			race.Mask = r.Mask
 			race.Side = r.Side
@@ -328,5 +428,6 @@ func UpdateRacesFromBlizzard(env *Env, blizzard Blizzard) error {
 			}
 		}
 	}
+	//log.Println("Exiting UpdateRacesFromBlizzard")
 	return nil
 }

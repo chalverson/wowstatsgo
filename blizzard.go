@@ -6,14 +6,13 @@ import (
 	"github.com/chalverson/wowstatsgo/models"
 	"github.com/tidwall/gjson"
 	"gopkg.in/go-resty/resty.v1"
-	"time"
 )
 
 type Blizzard interface {
-	GetToonStats(toon models.Toon) (models.Stats, string, error)
+	GetToonStats(toon models.Toon) (models.Stat, string, error)
 	GetClasses() ([]models.ToonClass, error)
 	GetRaces() ([]models.Race, error)
-	GetToon(toon *models.Toon) error
+	GetToon(toon *models.ToonDto) error
 }
 
 type BlizzardHttp struct {
@@ -42,7 +41,7 @@ func NewBlizzard(clientId string, clientSecret string) (*BlizzardHttp, error) {
 	return blizzardHttp, nil
 }
 
-func (blizzard *BlizzardHttp) GetToon(toon *models.Toon) error {
+func (blizzard *BlizzardHttp) GetToon(toon *models.ToonDto) error {
 	url := fmt.Sprintf("https://%s.api.blizzard.com/wow/character/%s/%s", toon.Region, toon.Realm, toon.Name)
 
 	resp, err := resty.R().SetAuthToken(blizzard.AccessToken).SetHeader("Accept", "application/json").Get(url)
@@ -57,8 +56,8 @@ func (blizzard *BlizzardHttp) GetToon(toon *models.Toon) error {
 
 	body := resp.String()
 
-	toon.Class = gjson.Get(body, "class").Int()
-	toon.Race = gjson.Get(body, "race").Int()
+	toon.ClassID = gjson.Get(body, "class").Int()
+	toon.RaceID = gjson.Get(body, "race").Int()
 	toon.Gender = gjson.Get(body, "gender").Int()
 	toon.Name = gjson.Get(body, "name").String()
 
@@ -79,7 +78,7 @@ func (blizzard *BlizzardHttp) GetClasses() ([]models.ToonClass, error) {
 		powerType := gjson.Get(r.String(), "powerType").String()
 		name := gjson.Get(r.String(), "name").String()
 		tmpClass := models.ToonClass{
-			Id:        id,
+			ID:        id,
 			Mask:      mask,
 			PowerType: powerType,
 			Name:      name,
@@ -89,20 +88,20 @@ func (blizzard *BlizzardHttp) GetClasses() ([]models.ToonClass, error) {
 	return classes, nil
 }
 
-func (blizzard *BlizzardHttp) GetToonStats(toon models.Toon) (models.Stats, string, error) {
+func (blizzard *BlizzardHttp) GetToonStats(toon models.Toon) (models.Stat, string, error) {
 	url := fmt.Sprintf("https://%s.api.blizzard.com/wow/character/%s/%s", toon.Region, toon.Realm, toon.Name)
 	resp, err := resty.R().SetQueryParams(map[string]string{
 		"fields": "statistics,items,pets,mounts",
 	}).SetAuthToken(blizzard.AccessToken).SetHeader("Accept", "application/json").Get(url)
 	if err != nil {
-		return models.Stats{}, "", err
+		return models.Stat{}, "", err
 	}
 
 	myJson := resp.String()
-	var stats = new(models.Stats)
-	stats.Toon = &toon
+	var stats = new(models.Stat)
+	stats.ToonID = toon.ID
 	stats.Level = gjson.Get(myJson, "level").Int()
-	stats.AchievementPoint = gjson.Get(myJson, "achievementPoints").Int()
+	stats.AchievementPoints = gjson.Get(myJson, "achievementPoints").Int()
 	stats.ExaltedReps = gjson.Get(myJson, "statistics.subCategories.#[id==130].subCategories.#[id==147].statistics.#[id=377].quantity").Int()
 	stats.MountsCollected = gjson.Get(myJson, "mounts.numCollected").Int()
 	stats.QuestsCompleted = gjson.Get(myJson, "statistics.subCategories.#[id==133].statistics.#[id=98].quantity").Int()
@@ -113,7 +112,6 @@ func (blizzard *BlizzardHttp) GetToonStats(toon models.Toon) (models.Stats, stri
 	stats.ItemLevel = gjson.Get(myJson, "items.averageItemLevel").Int()
 	stats.HonorableKills = gjson.Get(myJson, "totalHonorableKills").Int()
 	stats.LastModified = gjson.Get(myJson, "lastModified").Int()
-	stats.CreateDate = time.Now().UTC()
 
 	return *stats, myJson, nil
 }
@@ -135,7 +133,7 @@ func (blizzard *BlizzardHttp) GetRaces() ([]models.Race, error) {
 		name := gjson.Get(r.String(), "name").String()
 
 		race := models.Race{
-			Id:   id,
+			ID:   id,
 			Name: name,
 			Mask: mask,
 			Side: side,
@@ -145,3 +143,4 @@ func (blizzard *BlizzardHttp) GetRaces() ([]models.Race, error) {
 
 	return races, nil
 }
+
