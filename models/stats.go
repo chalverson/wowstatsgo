@@ -11,6 +11,7 @@ type Stat struct {
 	Toon              Toon
 	ToonID            uint
 	LastModified      int64
+	InsertDate        time.Time `gorm:"type:date"`
 	Level             int64
 	AchievementPoints int64
 	ExaltedReps       int64

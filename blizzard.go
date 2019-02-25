@@ -6,6 +6,7 @@ import (
 	"github.com/chalverson/wowstatsgo/models"
 	"github.com/tidwall/gjson"
 	"gopkg.in/go-resty/resty.v1"
+	"time"
 )
 
 type Blizzard interface {
@@ -112,6 +113,7 @@ func (blizzard *BlizzardHttp) GetToonStats(toon models.Toon) (models.Stat, strin
 	stats.ItemLevel = gjson.Get(myJson, "items.averageItemLevel").Int()
 	stats.HonorableKills = gjson.Get(myJson, "totalHonorableKills").Int()
 	stats.LastModified = gjson.Get(myJson, "lastModified").Int()
+	stats.InsertDate = time.Now()
 
 	return *stats, myJson, nil
 }

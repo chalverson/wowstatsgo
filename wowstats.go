@@ -255,6 +255,7 @@ func doDatabaseMigrations(db *models.WowDB, env *Env, blizzard Blizzard) {
 	db.Model(&models.Toon{}).AddForeignKey("race_id", "races(id)", "RESTRICT", "RESTRICT")
 	db.Model(&models.Toon{}).AddForeignKey("class_id", "toon_classes(id)", "RESTRICT", "RESTRICT")
 	db.Model(&models.Stat{}).AddForeignKey("toon_id", "toons(id)", "RESTRICT", "RESTRICT")
+	db.Model(&models.Stat{}).AddUniqueIndex("idx_toon_id_create_date", "toon_id", "insert_date")
 }
 
 // Gets the latest stats for the specified Toon and will then save to the database.

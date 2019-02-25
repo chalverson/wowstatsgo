@@ -6,6 +6,7 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 )
 
+// Defines database functions.
 type Datastore interface {
 	InsertToon(toon *Toon) error
 	GetToonById(id int64) (*Toon, error)
@@ -18,6 +19,7 @@ type Datastore interface {
 	GetToonClassById(id int64) (*ToonClass, error)
 }
 
+// Database interface struct.
 type WowDB struct {
 	*gorm.DB
 	dbDriver string
