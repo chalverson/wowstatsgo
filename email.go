@@ -72,7 +72,10 @@ func (r *EmailRequest) ParseTemplate(templateFileName string, data interface{}) 
 // Run the email summary. This will get the latest stats, then execute the template and finally send
 // the email.
 func DoEmailSummary(env *Env) error {
-	stats := env.db.GetAllToonLatestQuickSummary()
+	stats, err := env.db.GetAllToonLatestQuickSummary()
+	if err != nil {
+		return err
+	}
 
 	// The email template laying out the HTML email.
 	const tpl = `
@@ -89,7 +92,7 @@ func DoEmailSummary(env *Env) error {
 </tbody></table><p>
 `
 	r := NewEmailRequest(env.config.Email.ToAddress, env.config.Email.FromAddress, "WoW Stats", env.config.Email.Server, "")
-	err := r.ParseTemplate(tpl, stats)
+	err = r.ParseTemplate(tpl, stats)
 	if err != nil {
 		return err
 	}

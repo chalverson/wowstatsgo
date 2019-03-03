@@ -9,10 +9,9 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/chalverson/wowstatsgo/models"
 	"github.com/jessevdk/go-flags"
-	_ "github.com/lib/pq"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,15 +52,17 @@ type Config struct {
 	ArchiveDir   string
 	ClientId     string
 	ClientSecret string
+	LogLevel     string
 	Email        EmailConfig
 }
 
 type Env struct {
-	db     models.Datastore
+	db     Datastore
 	config Config
 }
 
 func main() {
+	log.Trace("Starting application")
 	_, err := flags.Parse(&opts)
 	if err != nil {
 		log.Panic(err)
@@ -113,7 +114,14 @@ func main() {
 		log.Fatalf("Allowed database driver values are postgres or mysql")
 	}
 
-	db, err := models.NewDB(config.DbDriver, config.DbUrl)
+	if viper.IsSet("logLevel") {
+		var logLevel, err = log.ParseLevel(config.LogLevel)
+		if err != nil {
+			log.SetLevel(logLevel)
+		}
+	}
+
+	db, err := NewDB(config.DbDriver, config.DbUrl)
 	defer db.Close()
 
 	env := &Env{db: db, config: config}
@@ -145,7 +153,11 @@ func main() {
 	}
 
 	if opts.Summary {
-		stats := env.db.GetAllToonLatestQuickSummary()
+		stats, err := env.db.GetAllToonLatestQuickSummary()
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
 		w := tabwriter.NewWriter(os.Stdout, 5, 0, 3, ' ', tabwriter.AlignRight)
 		_, _ = fmt.Fprintln(w, "Name\tLevel\tItem Level\tLast Modified\tDate\t")
 		for _, s := range stats {
@@ -174,18 +186,19 @@ func main() {
 		go GetAndInsertToonStats(t, env, blizzard, &wg)
 	}
 	wg.Wait()
+	log.Trace("Exiting.")
 }
 
 // Do database migrations.
 // Add additional changes after the AutoMigrate for things that AutoMigrate won't handle.
-func doDatabaseMigrations(db *models.WowDB, env *Env, blizzard Blizzard) {
+func doDatabaseMigrations(db *WowDB, env *Env, blizzard Blizzard) {
 
 	if ! db.HasTable(&models.Race{}) {
-		log.Println("Migrating race")
+		log.Debug("Migrating race")
 		db.AutoMigrate(&models.Race{})
 		err := UpdateRacesFromBlizzard(env, blizzard)
 		if err != nil {
-			log.Printf("Could not update races: %v\n", err)
+			log.Error("Could not update races: %v", err)
 		}
 	}
 
@@ -194,7 +207,7 @@ func doDatabaseMigrations(db *models.WowDB, env *Env, blizzard Blizzard) {
 		db.AutoMigrate(&models.ToonClass{})
 		err := UpdateClassesFromBlizzard(env, blizzard)
 		if err != nil {
-			log.Printf("Could not update races: %v\n", err)
+			log.Error("Could not update classes: %v", err)
 		}
 	}
 
@@ -377,7 +390,7 @@ func AddToon(env *Env, blizzard Blizzard) {
 // Update the player classes from Blizzard. This will use the API to get the classes and add them to the database. This
 //probably isn't really needed, it's happened exactly twice ever, but you never know.
 func UpdateClassesFromBlizzard(env *Env, blizzard Blizzard) error {
-	//log.Println("Entering UpdateClassesFromBlizzard")
+	log.Trace("Entering UpdateClassesFromBlizzard")
 
 	classes, err := blizzard.GetClasses()
 	if err != nil {
@@ -399,14 +412,14 @@ func UpdateClassesFromBlizzard(env *Env, blizzard Blizzard) error {
 			}
 		}
 	}
-	//log.Println("Exiting UpdateClassesFromBlizzard")
+	log.Trace("Exiting UpdateClassesFromBlizzard")
 	return nil
 }
 
 // Update the database with the data from Blizzard. We force insert the ID here and use the same ID as
 // Blizzard so that we can map things correctly.
 func UpdateRacesFromBlizzard(env *Env, blizzard Blizzard) error {
-	//log.Println("Entering UpdateRacesFromBlizzard")
+	log.Trace("Entering UpdateRacesFromBlizzard")
 	races, err := blizzard.GetRaces()
 
 	if err != nil {
@@ -429,6 +442,6 @@ func UpdateRacesFromBlizzard(env *Env, blizzard Blizzard) error {
 			}
 		}
 	}
-	//log.Println("Exiting UpdateRacesFromBlizzard")
+	log.Trace("Exiting UpdateRacesFromBlizzard")
 	return nil
 }

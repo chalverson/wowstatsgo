@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Functions to interact with Blizzard.
 type Blizzard interface {
 	GetToonStats(toon models.Toon) (models.Stat, string, error)
 	GetClasses() ([]models.ToonClass, error)
@@ -16,6 +17,7 @@ type Blizzard interface {
 	GetToon(toon *models.ToonDto) error
 }
 
+// Configuration information for interacting with Blizzard.
 type BlizzardHttp struct {
 	ClientId     string
 	ClientSecret string

@@ -25,26 +25,6 @@ type Stat struct {
 	HonorableKills    int64
 }
 
-// Insert a stats record. This doesn't check to see if a duplicate exists, it relies on the database's
-// constraints to handle that.
-func (db *WowDB) InsertStats(stats *Stat) error {
-	return db.Create(stats).Error
-}
-
-// Get a list of the latest Stat for all toons. This will get just the latest day's stats which is useful
-// for email or CLI.
-func (db *WowDB) GetAllToonLatestQuickSummary() []Stat {
-	var stats []Stat
-	toons := db.GetAllToons()
-
-	for _, t := range toons {
-		var stat Stat
-		db.Preload("Toon").Where("toon_id = ?", t.ID).Order("created_at DESC").First(&stat)
-		stats = append(stats, stat)
-	}
-	return stats
-}
-
 // Get the LastModified field as a human readable format as YYYY-MM-DD HH:MM:SS.
 // Need to pull this out separately because we have extra detail from the JSON. We need to divide the time
 // by 1000, then format it.
