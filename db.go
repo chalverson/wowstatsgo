@@ -73,9 +73,9 @@ func (db *WowDB) InsertStats(stats *models.Stat) error {
 // for email or CLI.
 func (db *WowDB) GetAllToonLatestQuickSummary() ([]models.Stat, error) {
 	var stats []models.Stat
-	db.LogMode(true)
+	//db.LogMode(true)
 	dbRet := db.Preload("Toon").Where("insert_date = (select max(insert_date) from stats)").Order("level desc").Order("item_level desc").Find(&stats)
-	db.LogMode(false)
+	//db.LogMode(false)
 
 	return stats, dbRet.Error
 }
