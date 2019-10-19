@@ -15,5 +15,6 @@
 .idea/
 *.iml
 *.json
+!test-json.json
 json/
 wowstatsgo
