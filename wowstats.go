@@ -282,6 +282,7 @@ func GetAndInsertToonStats(t Toon, env *Env, blizzard Blizzard, wg *sync.WaitGro
 	}
 
 	stats := ParseStatsFromJson(myJson)
+	stats.ToonID = t.ID
 	err = env.db.InsertStats(&stats)
 	if err != nil {
 		log.Printf("Error inserting stats for %v: %v\n", t.Name, err)
