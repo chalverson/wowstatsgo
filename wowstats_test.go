@@ -13,47 +13,60 @@ func TestParseStatsFromJson(t *testing.T) {
 
 	stats := ParseStatsFromJson(string(jsonText))
 
-	if stats.AchievementPoints != 21835 {
-		t.Errorf("Achievement points incorrect, want %v got %v", 21834, stats.AchievementPoints)
+	var wanted = new(Stat)
+	wanted.AchievementPoints = 21835
+	wanted.ExaltedReps = 95
+	wanted.PetsCollected = 1227
+	wanted.MountsCollected = 260
+	wanted.QuestsCompleted = 21216
+	wanted.FishCaught = 22306
+	wanted.PetBattlesWon = 1318
+	wanted.PetBattlesPvpWon = 34
+	wanted.ItemLevel = 415
+	wanted.HonorableKills = 11425
+	wanted.LastModified = 1571309922000
+
+	if stats.AchievementPoints != wanted.AchievementPoints {
+		t.Errorf("Achievement points incorrect, want %v got %v", wanted.AchievementPoints, stats.AchievementPoints)
 	}
 
-	if stats.ExaltedReps != 95 {
-		t.Errorf("ExaltedReps incorrect, want %v got %v", 95, stats.ExaltedReps)
+	if stats.ExaltedReps != wanted.ExaltedReps {
+		t.Errorf("ExaltedReps incorrect, want %v got %v", wanted.ExaltedReps, stats.ExaltedReps)
 	}
 
-	if stats.PetsCollected != 1227 {
-		t.Errorf("PetsCollected is incorrect, want %v got %v", 1227, stats.PetsCollected)
+	if stats.PetsCollected != wanted.PetsCollected {
+		t.Errorf("PetsCollected is incorrect, want %v got %v", wanted.PetsCollected, stats.PetsCollected)
 	}
 
-	if stats.MountsCollected != 260 {
-		t.Errorf("MountsCollected is incorrect, want %v got %v", 260, stats.MountsCollected)
+	if stats.MountsCollected != wanted.MountsCollected {
+		t.Errorf("MountsCollected is incorrect, want %v got %v", wanted.MountsCollected, stats.MountsCollected)
 	}
 
-	if stats.QuestsCompleted != 21216 {
-		t.Errorf("QuestsCompleted is incorrect, want %v got %v", 21216, stats.QuestsCompleted)
+	if stats.QuestsCompleted != wanted.QuestsCompleted {
+		t.Errorf("QuestsCompleted is incorrect, want %v got %v", wanted.QuestsCompleted, stats.QuestsCompleted)
 	}
 
-	if stats.FishCaught != 22306 {
-		t.Errorf("FishCaught is incorrect, want %v got %v", 22306, stats.FishCaught)
+	if stats.FishCaught != wanted.FishCaught {
+		t.Errorf("FishCaught is incorrect, want %v got %v", wanted.FishCaught, stats.FishCaught)
 	}
 
-	if stats.PetBattlesWon != 1318 {
-		t.Errorf("PetBattlesWon is incorrect, want %v got %v", 1318, stats.PetBattlesWon)
+	if stats.PetBattlesWon != wanted.PetBattlesWon {
+		t.Errorf("PetBattlesWon is incorrect, want %v got %v", wanted.PetBattlesWon, stats.PetBattlesWon)
 	}
 
-	if stats.PetBattlesPvpWon != 34 {
-		t.Errorf("PetBattlesPvpWon is incorrect, want %v got %v", 34, stats.PetBattlesPvpWon)
+	if stats.PetBattlesPvpWon != wanted.PetBattlesPvpWon {
+		t.Errorf("PetBattlesPvpWon is incorrect, want %v got %v", wanted.PetBattlesPvpWon, stats.PetBattlesPvpWon)
 	}
 
-	if stats.ItemLevel != 415 {
-		t.Errorf("ItemLevel is incorrect, want %v got %v", 415, stats.ItemLevel)
+	if stats.ItemLevel != wanted.ItemLevel {
+		t.Errorf("ItemLevel is incorrect, want %v got %v", wanted.ItemLevel, stats.ItemLevel)
 	}
 
-	if stats.HonorableKills != 11425 {
-		t.Errorf("HonorableKills is incorrect, want %v got %v", 11425, stats.HonorableKills)
+	if stats.HonorableKills != wanted.HonorableKills {
+		t.Errorf("HonorableKills is incorrect, want %v got %v", wanted.HonorableKills, stats.HonorableKills)
 	}
 
-	if stats.LastModified != 1571309922000 {
-		t.Errorf("LastModified is incorrect, want %v got %v", 1571309922000, stats.LastModified)
+	if stats.LastModified != wanted.LastModified {
+		t.Errorf("LastModified is incorrect, want %v got %v", wanted.LastModified, stats.LastModified)
 	}
 }
