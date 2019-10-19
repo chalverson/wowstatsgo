@@ -1,18 +1,20 @@
-package models
+package main
 
-import "github.com/jinzhu/gorm"
+import (
+	"github.com/jinzhu/gorm"
+)
 
 // Database table model
 type Toon struct {
 	gorm.Model
-	Name    string
-	Race    Race `gorm:"foreignkey:RaceID"`
-	RaceID  int64
+	Name      string
+	Race      Race `gorm:"foreignkey:RaceID"`
+	RaceID    int64
 	ToonClass ToonClass `gorm:"foreignkey:ClassID"`
-	ClassID int64
-	Gender  int64
-	Realm   string
-	Region  string
+	ClassID   int64
+	Gender    int64
+	Realm     string
+	Region    string
 }
 
 type ToonDto struct {

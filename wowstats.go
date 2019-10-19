@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/adrg/xdg"
-	"github.com/chalverson/wowstatsgo/models"
 	"github.com/jessevdk/go-flags"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/tidwall/gjson"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -193,31 +193,31 @@ func main() {
 // Add additional changes after the AutoMigrate for things that AutoMigrate won't handle.
 func doDatabaseMigrations(db *WowDB, env *Env, blizzard Blizzard) {
 
-	if ! db.HasTable(&models.Race{}) {
+	if ! db.HasTable(&Race{}) {
 		log.Debug("Migrating race")
-		db.AutoMigrate(&models.Race{})
+		db.AutoMigrate(&Race{})
 		err := UpdateRacesFromBlizzard(env, blizzard)
 		if err != nil {
-			log.Error("Could not update races: %v", err)
+			log.Errorf("Could not update races: %v", err)
 		}
 	}
 
-	if ! db.HasTable(&models.ToonClass{}) {
+	if ! db.HasTable(&ToonClass{}) {
 		log.Println("Migrating classes")
-		db.AutoMigrate(&models.ToonClass{})
+		db.AutoMigrate(&ToonClass{})
 		err := UpdateClassesFromBlizzard(env, blizzard)
 		if err != nil {
-			log.Error("Could not update classes: %v", err)
+			log.Errorf("Could not update classes: %v", err)
 		}
 	}
 
-	db.AutoMigrate(&models.Stat{})
-	db.AutoMigrate(&models.Toon{})
+	db.AutoMigrate(&Stat{})
+	db.AutoMigrate(&Toon{})
 
-	if ! db.HasTable(&models.ClassColor{}) {
-		db.AutoMigrate(&models.ClassColor{})
-		db.Model(&models.ClassColor{}).AddForeignKey("toon_class_id", "toon_classes(id)", "RESTRICT", "RESTRICT")
-		var tColor = models.ClassColor{ToonClassID: 1, Color: "#C79C63"}
+	if ! db.HasTable(&ClassColor{}) {
+		db.AutoMigrate(&ClassColor{})
+		db.Model(&ClassColor{}).AddForeignKey("toon_class_id", "toon_classes(id)", "RESTRICT", "RESTRICT")
+		var tColor = ClassColor{ToonClassID: 1, Color: "#C79C63"}
 		db.Create(&tColor)
 		tColor.ID = 0
 		tColor.ToonClassID = 2
@@ -265,22 +265,23 @@ func doDatabaseMigrations(db *WowDB, env *Env, blizzard Blizzard) {
 		db.Create(&tColor)
 	}
 
-	db.Model(&models.Toon{}).AddForeignKey("race_id", "races(id)", "RESTRICT", "RESTRICT")
-	db.Model(&models.Toon{}).AddForeignKey("class_id", "toon_classes(id)", "RESTRICT", "RESTRICT")
-	db.Model(&models.Stat{}).AddForeignKey("toon_id", "toons(id)", "RESTRICT", "RESTRICT")
-	db.Model(&models.Stat{}).AddUniqueIndex("idx_toon_id_create_date", "toon_id", "insert_date")
+	db.Model(&Toon{}).AddForeignKey("race_id", "races(id)", "RESTRICT", "RESTRICT")
+	db.Model(&Toon{}).AddForeignKey("class_id", "toon_classes(id)", "RESTRICT", "RESTRICT")
+	db.Model(&Stat{}).AddForeignKey("toon_id", "toons(id)", "RESTRICT", "RESTRICT")
+	db.Model(&Stat{}).AddUniqueIndex("idx_toon_id_create_date", "toon_id", "insert_date")
 }
 
 // Gets the latest stats for the specified Toon and will then save to the database.
-func GetAndInsertToonStats(t models.Toon, env *Env, blizzard Blizzard, wg *sync.WaitGroup) {
+func GetAndInsertToonStats(t Toon, env *Env, blizzard Blizzard, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	stats, myJson, err := blizzard.GetToonStats(t)
+	myJson, err := blizzard.GetToonJson(t)
 	if err != nil {
 		log.Printf("Could not get stats for %s: %v\n", t.Name, err)
 		return
 	}
 
+	stats := ParseStatsFromJson(myJson)
 	err = env.db.InsertStats(&stats)
 	if err != nil {
 		log.Printf("Error inserting stats for %v: %v\n", t.Name, err)
@@ -327,6 +328,25 @@ func GetAndInsertToonStats(t models.Toon, env *Env, blizzard Blizzard, wg *sync.
 	}
 }
 
+func ParseStatsFromJson(myJson string) Stat {
+	var stats = new(Stat)
+	//stats.ToonID = toon.ID
+	stats.Level = gjson.Get(myJson, "level").Int()
+	stats.AchievementPoints = gjson.Get(myJson, "achievementPoints").Int()
+	stats.ExaltedReps = gjson.Get(myJson, "statistics.subCategories.#[id==130].subCategories.#[id==147].statistics.#[id=377].quantity").Int()
+	stats.MountsCollected = gjson.Get(myJson, "mounts.numCollected").Int()
+	stats.QuestsCompleted = gjson.Get(myJson, "statistics.subCategories.#[id==133].statistics.#[id=98].quantity").Int()
+	stats.FishCaught = gjson.Get(myJson, "statistics.subCategories.#[id==132].subCategories.#[id==178].statistics.#[id==1518].quantity").Int()
+	stats.PetsCollected = gjson.Get(myJson, "pets.numCollected").Int()
+	stats.PetBattlesWon = gjson.Get(myJson, "statistics.subCategories.#[id==15219].statistics.#[id==8278].quantity").Int()
+	stats.PetBattlesPvpWon = gjson.Get(myJson, "statistics.subCategories.#[id==15219].statistics.#[id==8286].quantity").Int()
+	stats.ItemLevel = gjson.Get(myJson, "items.averageItemLevel").Int()
+	stats.HonorableKills = gjson.Get(myJson, "totalHonorableKills").Int()
+	stats.LastModified = gjson.Get(myJson, "lastModified").Int()
+	stats.InsertDate = time.Now()
+	return *stats
+}
+
 // Query the user for character to info to add to the database.
 func AddToon(env *Env, blizzard Blizzard) {
 	fmt.Printf("Character name: ")
@@ -342,7 +362,7 @@ func AddToon(env *Env, blizzard Blizzard) {
 	fmt.Printf("Region: [%v]\n", region)
 
 	fmt.Println("Looking up character, please wait...")
-	toon := models.NewToon(name, 0, 0, 0, realm, region)
+	toon := NewToon(name, 0, 0, 0, realm, region)
 	err := blizzard.GetToon(toon)
 	if err != nil {
 		fmt.Printf("Could not find character: %v\n", err)
@@ -371,7 +391,7 @@ func AddToon(env *Env, blizzard Blizzard) {
 	addResp := strings.ToLower(scanner.Text())
 	if addResp == "y" || addResp == "" {
 		fmt.Println("Adding character")
-		var dbToon models.Toon
+		var dbToon Toon
 		dbToon.ToonClass = *dbClass
 		dbToon.Race = *dbRace
 		dbToon.Name = name

@@ -1,4 +1,4 @@
-package models
+package main
 
 // Mapping of the RaceID table.
 type Race struct {

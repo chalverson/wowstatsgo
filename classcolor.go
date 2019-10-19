@@ -1,4 +1,4 @@
-package models
+package main
 
 type ClassColor struct {
 	ID           int64
