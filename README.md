@@ -17,14 +17,7 @@ so length of code is not a good comparison.
 
 ### Requirements
 
-#### Go Packages
-
-    go get -u github.com/jinzhu/gorm
-    go get -u github.com/adrg/xdg
-    go get -u github.com/spf13/viper
-    go get -u github.com/tidwall/gjson
-    go get -u gopkg.in/go-resty/resty.v1
-    go get -u github.com/jessevdk/go-flags
+Requires go 1.13 or better and now uses modules.
 
 #### Database
 
