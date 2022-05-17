@@ -8,6 +8,6 @@ require (
 	github.com/jinzhu/gorm v1.9.11
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/viper v1.4.0
-	github.com/tidwall/gjson v1.3.2
+	github.com/tidwall/gjson v1.9.3
 	gopkg.in/resty.v1 v1.12.0
 )
